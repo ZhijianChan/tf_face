@@ -49,7 +49,7 @@ def load_model(model_path):
         meta_file, ckpt_file = get_model_filenames(model_path)
         print('Metagraph  file: %s' % meta_file)
         print('Checkpoint file: %s' % ckpt_file)
-        saver = tf.train.import_meta_graph(os.path.join(model_path, meta_file))
+        saver = tf.train.import_meta_graph(os.path.join(model_path, meta_file), clear_devices=True)
         saver.restore(tf.get_default_session(), os.path.join(model_path, ckpt_file))
 
 # =========================== #
@@ -221,6 +221,7 @@ def flip(image, random_flip):
     return image
 
 def load_data(image_paths, do_random_crop, do_random_flip, image_size, do_prewhiten = True):
+    # -- prewhiten is necessary !! -- #
     num_samples = len(image_paths)
     images = np.zeros((num_samples, image_size, image_size, 3))
     for i in range(num_samples):
@@ -229,8 +230,15 @@ def load_data(image_paths, do_random_crop, do_random_flip, image_size, do_prewhi
             img = to_rgb(img)
         if do_prewhiten:
             img = prewhiten(img)
-        img = crop(img, do_random_crop, image_size)
-        img = flip(img, do_random_flip)
+        # img = crop(img, do_random_crop, image_size)
+        # img = flip(img, do_random_flip)
         images[i,:,:,:] = img
     return images
 
+# =========================== #
+# Model ensemble utils
+# =========================== #
+def get_model_list(model_list):
+    with open(model_list) as fp:
+        model_list = [line.strip().split() for line in fp]
+    return model_list
