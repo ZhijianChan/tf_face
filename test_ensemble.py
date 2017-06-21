@@ -26,7 +26,7 @@ def main(args):
             with sess.as_default():
                 print("[%d] model: %s"  % (t, model[1]))
                 # restore model
-                test_utils.load_model(model[0])
+                test_utils.load_model(sess, model[0])
                 # load data tensor
                 images_pl      = tf.get_default_graph().get_tensor_by_name('input:0')
                 embeddings     = tf.get_default_graph().get_tensor_by_name('embeddings:0')

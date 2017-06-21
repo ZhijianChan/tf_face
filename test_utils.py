@@ -1,4 +1,3 @@
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -13,9 +12,6 @@ import os
 import numpy as np
 import tensorflow as tf
 
-# =========================== #
-# tf utils
-# =========================== #
 def get_model_filenames(model_dir):
     files = os.listdir(model_dir)
     meta_files = [s for s in files if s.endswith('.meta')]
@@ -35,7 +31,7 @@ def get_model_filenames(model_dir):
                 ckpt_file = step_str.groups()[0]
     return meta_file, ckpt_file
 
-def load_model(model_path):
+def load_model(sess, model_path):
     if (os.path.isfile(model_path)):
         # A protobuf file with a frozen graph
         print('Model filename: %s' % model_path)
@@ -50,11 +46,8 @@ def load_model(model_path):
         print('Metagraph  file: %s' % meta_file)
         print('Checkpoint file: %s' % ckpt_file)
         saver = tf.train.import_meta_graph(os.path.join(model_path, meta_file), clear_devices=True)
-        saver.restore(tf.get_default_session(), os.path.join(model_path, ckpt_file))
+        saver.restore(sess, os.path.join(model_path, ckpt_file))
 
-# =========================== #
-# statistic utils
-# =========================== #
 def calculate_acc(threshold, dist, actual_issame):
     predict_issame = np.less(dist, threshold)
     tp = np.sum( np.logical_and( predict_issame, actual_issame ))
@@ -141,9 +134,6 @@ def calculate_val(thresholds, embeddings1, embeddings2, actual_issame, far_targe
     val_std  = np.std(val)
     return val_mean, val_std, far_mean
 
-# =========================== #
-# lfw test utils
-# =========================== #
 def evaluate(embeddings, actual_issame, num_folds = 10):
     """Evaluate TPR, FPR, ACC under different threshold && VAR, VAR_std, FAR @ FAR=0.001"""
     # Calculate evaluation metrics
@@ -156,9 +146,6 @@ def evaluate(embeddings, actual_issame, num_folds = 10):
     val, val_std, far  = calculate_val(thresholds,embeddings1,embeddings2,np.asarray(actual_issame),1e-3,num_folds = num_folds)
     return tpr, fpr, acc, val, val_std, far
 
-# =========================== #
-# lfw file utils
-# =========================== #
 def read_pairs(pairs_filename):
     with open(pairs_filename, 'r') as f:
         f.readline()
@@ -187,9 +174,6 @@ def get_paths(lfw_dir, pairs, file_ext):
         print('Skipped %d image pairs' % num_skipped_pairs)
     return path_list, issame_list
 
-# =========================== #
-# image utils
-# =========================== #
 def to_rgb(img):
     w, h = img.shape
     ret = np.empty((w,h,3), dtype=np.uint8)
@@ -235,9 +219,6 @@ def load_data(image_paths, do_random_crop, do_random_flip, image_size, do_prewhi
         images[i,:,:,:] = img
     return images
 
-# =========================== #
-# Model ensemble utils
-# =========================== #
 def get_model_list(model_list):
     with open(model_list) as fp:
         model_list = [line.strip().split() for line in fp]
