@@ -122,9 +122,7 @@ def inception_resnet_v1(inputs,
     
     with tf.variable_scope(scope, 'Inception-Resnet-v1', [inputs], reuse=reuse):
         with slim.arg_scope([slim.batch_norm, slim.dropout], is_training=is_training):
-            with slim.arg_scope([slim.conv2d, slim.max_pool2d, slim.avg_pool2d],
-                    stride=1, padding='SAME'):
-
+            with slim.arg_scope([slim.conv2d, slim.max_pool2d, slim.avg_pool2d], stride=1, padding='SAME'):
                 net = slim.conv2d(inputs, 32, 3, stride=2, padding='VALID', scope='Conv2d_1a_3x3')
                 end_points['Conv2d_1a_3x3'] = net
                 net = slim.conv2d(net, 32, 3, padding='VALID', scope='Conv2d_2a_3x3')
@@ -152,7 +150,7 @@ def inception_resnet_v1(inputs,
                     net = reduction_b(net)
                 end_points['Mixed_7a'] = net
 
-                net = slim.repeat(net, 6, block8, scale=0.20)
+                net = slim.repeat(net, 6, block8, scale=0.20) # how to decide scale?
                 #net = block8(net, activation_fn=None)
 
                 with tf.variable_scope('AvgPool'):
@@ -172,10 +170,11 @@ def inception_resnet_v1(inputs,
     return net, end_points
 
 def inference(images, keep_prob,
-        bottleneck_size=128,
-        phase_train=True, 
-        weight_decay=0.0,
-        reuse=None):
+        bottleneck_size = 128,
+        phase_train = True, 
+        weight_decay = 0.0,
+        reuse = None,
+        scope = 'Inception-Resnet-v1'):
     batch_norm_params = {
         'decay': 0.995,
         'epsilon': 0.001,
@@ -186,4 +185,4 @@ def inference(images, keep_prob,
             weights_regularizer=slim.l2_regularizer(weight_decay),
             normalizer_fn=slim.batch_norm,
             normalizer_params=batch_norm_params):
-        return inception_resnet_v1(images, is_training=phase_train, keep_prob=keep_prob, bottleneck_size=bottleneck_size, reuse=reuse)
+        return inception_resnet_v1(images, is_training = phase_train, keep_prob = keep_prob, bottleneck_size = bottleneck_size, reuse = reuse, scope = scope)
