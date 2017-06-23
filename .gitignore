@@ -1,5 +1,6 @@
 *.pyc
 log*
+pretrained/*
 lr_decay_2.txt
 lr_decay_3.txt
 lr_decay_4.txt

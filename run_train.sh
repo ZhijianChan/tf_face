@@ -6,8 +6,8 @@ python train_model.py \
  --lfw_pairs       /exports_data/czj/data/lfw/files/pairs.txt  \
  --lfw_dir         /exports_data/czj/data/lfw/lfw_aligned/ \
  --lfw_batch_size  100 \
- --data_dir        /home/chenzhijian/data/casia/casia_aligned/ \
- --imglist         /home/chenzhijian/data/casia/files/train_set.txt \
+ --data_dir        /exports_data/czj/data/casia/casia_aligned/ \
+ --imglist         /exports_data/czj/data/casia/files/train_set.txt \
  --image_size      160 \
  --optimizer       RMSPROP \
  --learning_rate   -1 \
@@ -21,4 +21,4 @@ python train_model.py \
  --weight_decay    5e-5 \
  --center_loss_factor 0 \
  --center_loss_alpha 0.9 \
- --log_histograms \
+ --gpu_id 1

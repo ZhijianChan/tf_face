@@ -155,66 +155,64 @@ def main(args):
         image_list, label_list, num_classes = train_utils.get_datasets(args.data_dir, args.imglist_path)
         range_size = len(image_list)
         assert range_size > 0, 'The dataset should not be empty.'
-
-        #step 2: build graph
-        with tf.device('/gpu:%d' % args.gpu_id):
-            #random indices
-            indices_que = tf.train.range_input_producer(range_size)
-            deque_op = indices_que.dequeue_many(args.batch_size*args.epoch_size,
-                    'index_dequeue')
-
-            #network input
-            tf.set_random_seed(args.seed)
-            global_step   = tf.Variable(0, trainable = False)
-            lr_pl         = tf.placeholder(tf.float32, name='learning_rate')
-            batch_size_pl = tf.placeholder(tf.int32,   name='batch_size')
-            phase_train_pl= tf.placeholder(tf.bool,    name='phase_train')
-            imgpaths_pl   = tf.placeholder(tf.string,  name='image_paths')
-            labels_pl     = tf.placeholder(tf.int64,   name='labels')
-
-            #parallel input queue
-            input_queue = tf.FIFOQueue(
+        #random indices
+        indices_que = tf.train.range_input_producer(range_size)
+        deque_op = indices_que.dequeue_many(
+                args.batch_size*args.epoch_size,
+                'index_dequeue')
+        #network input
+        tf.set_random_seed(args.seed)
+        global_step   = tf.Variable(0, trainable = False)
+        lr_pl         = tf.placeholder(tf.float32, name='learning_rate')
+        batch_size_pl = tf.placeholder(tf.int32,   name='batch_size')
+        phase_train_pl= tf.placeholder(tf.bool,    name='phase_train')
+        imgpaths_pl   = tf.placeholder(tf.string,  name='image_paths')
+        labels_pl     = tf.placeholder(tf.int64,   name='labels')
+        #parallel input queue
+        input_queue = tf.FIFOQueue(
                 capacity=100000,  #** capacity > bach_size * epoch_size
                 dtypes=[tf.string, tf.int64], shapes=[(1,), (1,)],
                 shared_name=None, name='input_que')
-            enque_op = input_queue.enqueue_many([imgpaths_pl,labels_pl],
+        enque_op = input_queue.enqueue_many(
+                [imgpaths_pl,labels_pl],
                 name='enque_op')
-            
-            #augmentation
-            num_threads = 4
-            threads_input_list = []
-            for _ in range(num_threads):
-                img_paths, label = input_queue.dequeue()  # 'img_paths' and 'label' are both tensor
-                images = []
-                for img_path in tf.unstack(img_paths):
-                    img_contents = tf.read_file(img_path)
-                    img = tf.image.decode_jpeg(img_contents)
-                    if args.random_crop:
-                        img = tf.random_crop(img, [args.image_size, args.image_size, 3])
-                    else:
-                        img = tf.image.resize_image_with_crop_or_pad(img, args.image_size, args.image_size)
-                    if args.random_flip:
-                        img = tf.image.random_flip_left_right(img)
-                    img.set_shape((args.image_size, args.image_size, 3))
-                    images.append(tf.image.per_image_standardization(img)) # normalize
-                threads_input_list.append([images, label])
-            
-            image_batch, label_batch = tf.train.batch_join(
+        #augmentation
+        num_threads = 4
+        threads_input_list = []
+        for _ in range(num_threads):
+            img_paths, label = input_queue.dequeue()  # 'img_paths' and 'label' are both tensor
+            images = []
+            for img_path in tf.unstack(img_paths):
+                img_contents = tf.read_file(img_path)
+                img = tf.image.decode_jpeg(img_contents)
+                if args.random_crop:
+                    img = tf.random_crop(img, [args.image_size, args.image_size, 3])
+                else:
+                    img = tf.image.resize_image_with_crop_or_pad(img, args.image_size, args.image_size)
+                if args.random_flip:
+                    img = tf.image.random_flip_left_right(img)
+                img.set_shape((args.image_size, args.image_size, 3))
+                images.append(tf.image.per_image_standardization(img)) # normalize
+            threads_input_list.append([images, label])
+        image_batch, label_batch = tf.train.batch_join(
                 threads_input_list,
                 batch_size=batch_size_pl, #Notice: here is 'batch_size_pl', not 'batch_size'!!
                 shapes=[(args.image_size, args.image_size, 3), ()],
                 enqueue_many=True,
                 capacity=4*num_threads*args.batch_size, # how long the prefetching is allowed to grow the queues
                 allow_smaller_final_batch=True)
-            image_batch = tf.identity(image_batch, 'image_batch')
-            image_batch = tf.identity(image_batch, 'input')
-            label_batch = tf.identity(label_batch, 'label_batch')
-            print('Total classes: %d' % num_classes)
-            print('Total images:  %d' % range_size)
-            tf.summary.image('input_images', image_batch, 10)
+        image_batch = tf.identity(image_batch, 'image_batch')
+        image_batch = tf.identity(image_batch, 'input')
+        label_batch = tf.identity(label_batch, 'label_batch')
+        print('Total classes: %d' % num_classes)
+        print('Total images:  %d' % range_size)
+        tf.summary.image('input_images', image_batch, 10)
+
+        #step 2: build graph
+        with tf.device('/gpu:%d' % args.gpu_id):
 
             #extract feature
-            prelogits, _ = model_module.inference(
+            prelogits, end_points = model_module.inference(
                 image_batch,
                 args.keep_prob,
                 phase_train=phase_train_pl,
