@@ -1,0 +1,4 @@
+/home/chenzhijian/code/tf_face/models/20170526-163315/ _face_.jpg 0.7
+/home/chenzhijian/code/tf_face/models/20170606-202841/ _nose_.jpg 0.1
+/home/chenzhijian/code/tf_face/models/20170606-204659/ _lefteye_.jpg 0.1
+/home/chenzhijian/code/tf_face/models/20170606-204738/ _rightmouth_.jpg 0.1

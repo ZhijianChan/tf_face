@@ -1,16 +1,9 @@
 *.pyc
 log*
+models/2017*
 pretrained/*
 lr_decay_2.txt
 lr_decay_3.txt
 lr_decay_4.txt
 lr_decay_5.txt
-tune_center.sh
-run_train_patch_lefteye.sh
-run_train_patch_leftmouth.sh
-run_train_patch_nose.sh
-run_train_patch_righteye.sh
-run_train_patch_rightmouth.sh
-run_train_with_cl.sh
-model_list.txt
 tmp.txt

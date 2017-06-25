@@ -5,8 +5,6 @@ from __future__ import print_function
 import tensorflow as tf
 import os
 
-# ============================================= #
-# train utils
 def get_learning_rate_from_file(filename, epoch):
     with open(filename, 'r') as fp:
         for line in fp:
@@ -20,79 +18,117 @@ def get_learning_rate_from_file(filename, epoch):
 
 def _add_loss_summaries(total_loss):
     """Add summaries for losses.
-  
     Generates moving average for all losses and associated summaries for
     visualizing the performance of the network.
   
     Args:
-      total_loss: Total loss from loss().
+      total_loss: total losses including regularity
     Returns:
       loss_averages_op: op for generating moving averages of losses.
     """
     # Compute the moving average of all individual losses and the total loss.
-    loss_averages = tf.train.ExponentialMovingAverage(0.9, name='avg') #momentumn?
+    ema = tf.train.ExponentialMovingAverage(0.9, name='avg')
+    # [notice: 'losses' collection here only contains cross entropy]
     losses = tf.get_collection('losses')
-    loss_averages_op = loss_averages.apply(losses+[total_loss])
-    # Attach a scalar summmary to all individual losses and the total loss; do the
-    # same for the averaged version of the losses.
-    for l in losses+[total_loss]:
-        # Name each loss as '(raw)' and name the moving average version of the loss
-        # as the original loss name.
+    # [notice: 'apply' maintains moving averages of variables]
+    loss_averages_op = loss_averages.apply(losses + [total_loss])
+    for l in losses + [total_loss]:
         tf.summary.scalar(l.op.name+'(raw)', l)
-        tf.summary.scalar(l.op.name, loss_averages.average(l))
+        # [notice: 'average(var)' returns the variable holding the average of 'var']
+        tf.summary.scalar(l.op.name, loss_averages_op.average(l))
     return loss_averages_op
 
-def get_train_op(total_loss, global_step, optimizer, learning_rate, moving_average_decay, update_gradient_vars, log_histograms = True):
-    # Generate moving averages of all losses and associated summaries.
-    loss_averages_op = _add_loss_summaries(total_loss)
+def get_fusion_train_op(total_loss, global_step, optimizer,
+    lr_base, var_list1, lr_fusion, var_list2,
+    moving_average_decay, log_histograms = False):
+    # maintain moving average of total_losses
+    # [notice: this may not be very necessary]
+    #loss_averages_op = _add_loss_summaries(total_loss)
 
     # compute gradients
-    with tf.control_dependencies([loss_averages_op]):
-        if optimizer == 'ADAGRAD':
-            opt = tf.train.AdagradOptimizer(learning_rate)
-        elif optimizer == 'ADADELTA':
-            opt = tf.train.AdadeltaOptimizer(learning_rate, rho=0.9, epsilon=1e-6)
-        elif optimizer == 'ADAM':
-            opt=tf.train.AdamOptimizer(learning_rate, beta1=0.9, beta2=0.999, epsilon=0.1)
-        elif optimizer == 'RMSPROP':
-            opt=tf.train.RMSPropOptimizer(learning_rate, decay=0.9, momentum=0.9, epsilon=1.0)
-        elif optimizer == 'MOM':
-            opt=tf.train.MomentumOptimizer(learning_rate, 0.9, use_nesterov=True)
-        else:
-            raise ValueError('Invalid optimization algorithm')
-        grads = opt.compute_gradients(total_loss, update_gradient_vars)
+    #with tf.control_dependencies([loss_averages_op]):
+    if optimizer == 'ADAGRAD':
+        opt1 = tf.train.AdagradOptimizer(lr_base)
+        opt2 = tf.train.AdagradOptimizer(lr_fusion)
+    elif optimizer == 'ADADELTA':
+        opt1 = tf.train.AdadeltaOptimizer(lr_base,   rho=0.9, epsilon=1e-6)
+        opt2 = tf.train.AdadeltaOptimizer(lr_fusion, rho=0.9, epsilon=1e-6)
+    elif optimizer == 'ADAM':
+        opt1 = tf.train.AdamOptimizer(lr_base,   beta1=0.9, beta2=0.999, epsilon=0.1)
+        opt2 = tf.train.AdamOptimizer(lr_fusion, beta1=0.9, beta2=0.999, epsilon=0.1)
+    elif optimizer == 'RMSPROP':
+        opt1 = tf.train.RMSPropOptimizer(lr_base,   decay=0.9, momentum=0.9, epsilon=1.0)
+        opt2 = tf.train.RMSPropOptimizer(lr_fusion, decay=0.9, momentum=0.9, epsilon=1.0)
+    elif optimizer == 'MOM':
+        opt1 = tf.train.MomentumOptimizer(lr_base,   0.9, use_nesterov=True)
+        opt2 = tf.train.MomentumOptimizer(lr_fusion, 0.9, use_nesterov=True)
+    else:
+        raise ValueError('Invalid optimization algorithm')
 
-    # update parameters
-    apply_gradient_op = opt.apply_gradients(grads, global_step=global_step)
-
+    grads = tf.gradients(total_loss, var_list1 + var_list2)
+    grads1 = grads[:len(var_list1)]
+    grads2 = grads[len(var_list1):]
+    train_op1 = opt1.apply_gradients(zip(grads1, var_list1), global_step=global_step)
+    train_op2 = opt2.apply_gradients(zip(grads2, var_list2), global_step=global_step)
+    train_op_ = tf.group(train_op1, train_op2)
     if log_histograms:
-        # trainable variables
         for var in tf.trainable_variables():
             tf.summary.histogram(var.op.name, var)
-        # gradients for variables
         for grad, var in grads:
             if grad is not None:
                 tf.summary.histogram(var.op.name+'/grad', grad)
-
-    # Track the moving averages of all trainable variables
-    variables_average = tf.train.ExponentialMovingAverage(moving_average_decay,global_step)
-    variables_average_op = variables_average.apply(tf.trainable_variables())
-
-    with tf.control_dependencies([apply_gradient_op, variables_average_op]):
+    # maintain the moving averages of all trainable variables
+    ema = tf.train.ExponentialMovingAverage(moving_average_decay,global_step)
+    var_avg_op = ema.apply(tf.trainable_variables())
+    with tf.control_dependencies([train_op_, var_avg_op]):
         train_op = tf.no_op(name='train')
     return train_op
 
-# ============================================= #
-# loss utils
+def get_train_op(total_loss, global_step,
+    optimizer, lr, moving_average_decay,
+    var_list, log_histograms = False):
+    # maintain moving average of total_losses
+    # [notice: this may not be very necessary]
+    #loss_averages_op = _add_loss_summaries(total_loss)
+
+    # compute gradients
+    #with tf.control_dependencies([loss_averages_op]):
+    if optimizer == 'ADAGRAD':
+        opt = tf.train.AdagradOptimizer(lr)
+    elif optimizer == 'ADADELTA':
+        opt = tf.train.AdadeltaOptimizer(lr, rho=0.9, epsilon=1e-6)
+    elif optimizer == 'ADAM':
+        opt = tf.train.AdamOptimizer(lr, beta1=0.9, beta2=0.999, epsilon=0.1)
+    elif optimizer == 'RMSPROP':
+        opt = tf.train.RMSPropOptimizer(lr, decay=0.9, momentum=0.9, epsilon=1.0)
+    elif optimizer == 'MOM':
+        opt = tf.train.MomentumOptimizer(lr, 0.9, use_nesterov=True)
+    else:
+        raise ValueError('Invalid optimization algorithm')
+    grads = opt.compute_gradients(total_loss, var_list)
+    train_op_ = opt.apply_gradients(grads, global_step=global_step)
+    if log_histograms:
+        for var in tf.trainable_variables():
+            tf.summary.histogram(var.op.name, var)
+        for grad, var in grads:
+            if grad is not None:
+                tf.summary.histogram(var.op.name+'/grad', grad)
+    # maintain the moving averages of all trainable variables
+    ema = tf.train.ExponentialMovingAverage(moving_average_decay,global_step)
+    var_avg_op = ema.apply(tf.trainable_variables())
+    with tf.control_dependencies([train_op_, var_avg_op]):
+        train_op = tf.no_op(name='train')
+    return train_op
+
 def triplet_loss(anchor, positive, negative, alpha):
     """Calculate the triplet loss according to the FaceNet paper
     
-    Args:
+    args:
       anchor: the embeddings for the anchor images.
       positive: the embeddings for the positive images.
       negative: the embeddings for the negative images.
   
-    Returns:
+    returns:
       the triplet loss according to the FaceNet paper as a float tensor.
     """
     pos_dist = tf.reduce_sum( tf.square( tf.subtract( anchor, positive ) ), 1 )
@@ -114,8 +150,6 @@ def center_loss(features, label, alpha, num_classes):
     loss = tf.nn.l2_loss(features - center_feats)
     return loss, centers
 
-# ============================================= #
-# dataset utils
 def get_datasets(data_dir, imglist_path):
     """Load imglist, which contains 'img_path label' in each line"""
     mdict = {}
