@@ -64,16 +64,14 @@ def get_fusion_train_op(total_loss, global_step, optimizer,
         opt2 = tf.train.MomentumOptimizer(lr_fusion, 0.9, use_nesterov=True)
     else:
         raise ValueError('Invalid optimization algorithm')
-
-    grads = tf.gradients(total_loss, var_list1 + var_list2)
-    grads1 = grads[:len(var_list1)]
-    grads2 = grads[len(var_list1):]
-    train_op1 = opt1.apply_gradients(zip(grads1, var_list1), global_step=global_step)
-    train_op2 = opt2.apply_gradients(zip(grads2, var_list2), global_step=global_step)
+    grads1 = opt1.compute_gradients(total_loss, var_list1)
+    grads2 = opt2.compute_gradients(total_loss, var_list2)
+    train_op1 = opt1.apply_gradients(grads1, global_step=global_step)
+    train_op2 = opt2.apply_gradients(grads2, global_step=global_step)
     train_op_ = tf.group(train_op1, train_op2)
     if log_histograms:
         for var in tf.trainable_variables():
-            tf.summary.histogram(var.op.name, var)
+            tf.summary.histogram(var.name, var)
         for grad, var in grads:
             if grad is not None:
                 tf.summary.histogram(var.op.name+'/grad', grad)
@@ -109,13 +107,14 @@ def get_train_op(total_loss, global_step,
     train_op_ = opt.apply_gradients(grads, global_step=global_step)
     if log_histograms:
         for var in tf.trainable_variables():
-            tf.summary.histogram(var.op.name, var)
+            tf.summary.histogram(var.name, var)
         for grad, var in grads:
             if grad is not None:
-                tf.summary.histogram(var.op.name+'/grad', grad)
+                tf.summary.histogram(var.name+'/grad', grad)
     # maintain the moving averages of all trainable variables
     ema = tf.train.ExponentialMovingAverage(moving_average_decay,global_step)
-    var_avg_op = ema.apply(tf.trainable_variables())
+    #var_avg_op = ema.apply(tf.trainable_variables())
+    var_avg_op = ema.apply(var_list)
     with tf.control_dependencies([train_op_, var_avg_op]):
         train_op = tf.no_op(name='train')
     return train_op
