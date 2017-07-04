@@ -103,15 +103,17 @@ def run_epoch(args, sess, epoch,
         image_list, label_list,
         deque_op, enque_op,
         face_pl, nose_pl, lefteye_pl, rightmouth_pl, labels_pl,
-        lr_base_pl, lr_fusion_pl, phase_train_pl, batch_size_pl,
+        lr_fusion_pl, phase_train_pl, batch_size_pl,
         global_step, total_loss, reg_loss,
         train_op, summary_op, summary_writer):
 
     batch_num = 0
+    '''
     if args.lr_base > 0.0:
         lr_base = args.lr_base
     else:
         lr_base = train_utils.get_learning_rate_from_file(args.lr_base_schedule_file, epoch)
+    '''
 
     if args.lr_fusion > 0.0:
         lr_fusion = args.lr_fusion
@@ -146,7 +148,7 @@ def run_epoch(args, sess, epoch,
     while batch_num < args.epoch_size:
         start_time = time.time()
         feed_dict = {
-            lr_base_pl : lr_base,
+            #lr_base_pl : lr_base,
             lr_fusion_pl: lr_fusion,
             phase_train_pl: True,
             batch_size_pl: args.batch_size
@@ -212,7 +214,7 @@ def main(args):
         random.seed(args.seed)
         np.random.seed(args.seed)
         global_step   = tf.Variable(0, trainable = False)
-        lr_base_pl    = tf.placeholder(tf.float32, name='base_learning_rate')
+        #lr_base_pl    = tf.placeholder(tf.float32, name='base_learning_rate')
         lr_fusion_pl  = tf.placeholder(tf.float32, name='fusion_learning_rate')
         batch_size_pl = tf.placeholder(tf.int32,   name='batch_size')
         phase_train_pl= tf.placeholder(tf.bool,    name='phase_train')
@@ -295,6 +297,7 @@ def main(args):
             # [notice: how long the prefetching is allowed to fill the queue]
             capacity = 4*num_threads*args.batch_size,
             allow_smaller_final_batch = True)
+        '''
         face_batch = tf.identity(face_batch, 'face_batch')
         face_batch = tf.identity(face_batch, 'input1')
         nose_batch = tf.identity(nose_batch, 'nose_batch')
@@ -304,6 +307,7 @@ def main(args):
         rightmouth_batch = tf.identity(rightmouth_batch, 'rightmouth_batch')
         rightmouth_batch = tf.identity(rightmouth_batch, 'input4')
         label_batch = tf.identity(label_batch, 'label_batch')
+        '''
         print('Total classes: %d' % num_classes)
         print('Total images:  %d' % range_size)
         tf.summary.image('face_images', face_batch, 10)
@@ -345,7 +349,6 @@ def main(args):
                     phase_train = phase_train_pl,
                     weight_decay = args.weight_decay,
                     scope = 'Rightmouth')
-
         with tf.device('/gpu:%d' % args.gpu_id5):
             with tf.variable_scope("Fusion"):
                 # ---- concatenate ---- #
@@ -374,56 +377,58 @@ def main(args):
                     prelogits, 1, 1e-10, name='embeddings')
 
             # ---- define loss & train op ---- #
+            '''
             cross_entropy_mean = tf.reduce_min(
                 tf.nn.sparse_softmax_cross_entropy_with_logits(
                     labels = label_batch,
                     logits = logits),
                 name = 'cross_entropy')
+            '''
+            cross_entropy = - tf.reduce_sum(
+                tf.one_hot(indices=tf.cast(label_batch, tf.int32), depth=num_classes) * tf.log(tf.nn.softmax(logits) + 1e-10),
+                reduction_indices=[1])
+            cross_entropy_mean = tf.reduce_mean(cross_entropy)
             tf.add_to_collection('losses', cross_entropy_mean)
             # weight decay
             reg_loss = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
             # total loss: cross_entropy + weight_decay
             total_loss = tf.add_n([cross_entropy_mean] + reg_loss, name = 'total_loss')
+            '''
             lr_base = tf.train.exponential_decay(lr_base_pl,
                 global_step,
                 args.lr_decay_epochs * args.epoch_size,
                 args.lr_decay_factor,
                 staircase = True)
-            lr_fusion = tf.train.exponential_decay(lr_base_pl,
+            '''
+            lr_fusion = tf.train.exponential_decay(lr_fusion_pl,
                 global_step,
                 args.lr_decay_epochs * args.epoch_size,
                 args.lr_decay_factor,
                 staircase = True)
-            tf.summary.scalar('base_learning_rate', lr_base)
+            #tf.summary.scalar('base_learning_rate', lr_base)
             tf.summary.scalar('fusion_learning_rate', lr_fusion)
             var_list1 = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='BaseModel')
             var_list2 = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='Fusion')
+            '''
             train_op = train_utils.get_fusion_train_op(
                 total_loss, global_step, args.optimizer,
-                lr_base, var_list1, lr_fusion_pl, var_list2,
+                lr_base, var_list1, lr_fusion, var_list2,
                 args.moving_average_decay)
-
-        # ---- restore pretrained parameters ---- #
-        print("restore pretrained parameters...")
-        print("total:", len(var_list1))
-        for v in var_list1:
-            v_name = v.name # 'Face/xxx'
-            v_name = v_name[v_name.find('/')+1:]
-            v_name_1 = v_name[:v_name.find('/')] # 'Face'
-            v_name_2 = v_name[v_name.find('/'):] # '/xxx'
-            print("precess: %s" % v_name, end=" ")
-            if v_name_1 in pretrained:
-                v.assign(pretrained[v_name_1][v_name_2][0])
-                print("[ok]")
-            else:
-                print("[no found]")
-        print("done")
+            '''
+            train_op = train_utils.get_train_op(total_loss,
+                global_step,
+                args.optimizer,
+                lr_fusion,
+                args.moving_average_decay,
+                var_list2)
 
         # ---- training ---- #
         gpu_options = tf.GPUOptions(allow_growth=True)
         sess = tf.Session(config = tf.ConfigProto(
             gpu_options = gpu_options,
             log_device_placement = False,
+            # [notice: 'allow_soft_placement' will switch to cpu automatically
+            #  when some operations are not supported by GPU]
             allow_soft_placement = True))
         saver = tf.train.Saver(var_list1 + var_list2)
         summary_op = tf.summary.merge_all()
@@ -435,6 +440,25 @@ def main(args):
         tf.train.start_queue_runners(coord = coord, sess = sess)
 
         with sess.as_default():
+            # ---- restore pretrained parameters ---- #
+            to_assign = []
+            print("restore pretrained parameters...")
+            print("total:", len(var_list1))
+            for v in var_list1:
+                v_name = v.name # 'BaseModel/Face/xxx'
+                v_name = v_name[v_name.find('/')+1:] # 'Face/xxx'
+                v_name_1 = v_name[:v_name.find('/')] # 'Face'
+                v_name_2 = v_name[v_name.find('/'):] # '/xxx'
+                print("precess: %s" % v_name, end=" ")
+                if v_name_1 in pretrained:
+                    to_assign.append(v.assign(pretrained[v_name_1][v_name_2][0]))
+                    print("[ok]")
+                else:
+                    print("[no found]")
+                    v.assign(pretrained[v_name_1][v_name_2][0])
+                    print("done")
+            sess.run(to_assign)
+
             print("start training ...")
             epoch = 0
             while epoch < args.max_num_epochs:
@@ -446,7 +470,7 @@ def main(args):
                     image_list, label_list,
                     dequeue_op, enque_op,
                     face_pl, nose_pl, lefteye_pl, rightmouth_pl, labels_pl,
-                    lr_base_pl, lr_fusion_pl, phase_train_pl, batch_size_pl,
+                    lr_fusion_pl, phase_train_pl, batch_size_pl,
                     global_step, total_loss, reg_loss,
                     train_op, summary_op, summary_writer)
 
@@ -579,7 +603,8 @@ def parse_arguments(argv):
         help='The file extension for the LFW dataset.',
         default='_face_.jpg')
     parser.add_argument('--lfw_dir', type=str,
-        help='Path to the data directory containing aligned face patches.')
+        help='Path to the data directory containing aligned face patches.', 
+        default=10)
     parser.add_argument('--lfw_batch_size', type=int,
         help='Number of images to process in a batch in the LFW test set.',
         default=10)
