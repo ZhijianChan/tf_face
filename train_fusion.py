@@ -8,7 +8,6 @@ import test_utils
 import random
 import os
 import sys
-import importlib
 import argparse
 import time
 from datetime import datetime
@@ -17,6 +16,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from models import inception_resnet_v1_6c
+
 
 def snapshot(sess, saver, model_dir, model_name, step):
     print('snapshot...')
@@ -36,13 +36,14 @@ def snapshot(sess, saver, model_dir, model_name, step):
         duration = time.time() - start_time
         print('metagraph saved in %.2f seconds' % duration)
 
+
 def evaluate(sess, enque_op,
-        face_pl, nose_pl, lefteye_pl, rightmouth_pl, labels_pl,
-        phase_train_pl, batch_size_pl,
-        embeddings, labels,
-        image_list, actual_issame,
-        batch_size, num_folds,
-        log_dir, step, summary_writer):
+             face_pl, nose_pl, lefteye_pl, rightmouth_pl, labels_pl,
+             phase_train_pl, batch_size_pl,
+             embeddings, labels,
+             image_list, actual_issame,
+             batch_size, num_folds,
+             log_dir, step, summary_writer):
     print("evaluating on lfw...")
     start_time = time.time()
 
@@ -56,9 +57,9 @@ def evaluate(sess, enque_op,
 
     labels_array = np.expand_dims(np.arange(0, len(image_list)), 1)
     face_array = np.expand_dims(face_array, 1)
-    nose_array = np.expand_dims(nose_array,1)
-    lefteye_array = np.expand_dims(lefteye_array,1)
-    rightmouth_array = np.expand_dims(rightmouth_array,1)
+    nose_array = np.expand_dims(nose_array, 1)
+    lefteye_array = np.expand_dims(lefteye_array, 1)
+    rightmouth_array = np.expand_dims(rightmouth_array, 1)
 
     sess.run(enque_op, {
         face_pl: face_array,
@@ -77,14 +78,14 @@ def evaluate(sess, enque_op,
     lab_array = np.zeros((num_images,))
     for i in range(num_batches):
         feed_dict = {
-            phase_train_pl : False,
-            batch_size_pl : batch_size
+            phase_train_pl: False,
+            batch_size_pl: batch_size
         }
-        emb, lab = sess.run([embeddings, labels], feed_dict = feed_dict)
+        emb, lab = sess.run([embeddings, labels], feed_dict=feed_dict)
         lab_array[lab] = lab
         emb_array[lab] = emb
 
-    assert np.array_equal(lab_array, np.arange(num_images))==True, 'Wrong labels used for evaluation'
+    assert np.array_equal(lab_array, np.arange(num_images)) == True, 'Wrong labels used for evaluation'
     _, _, acc, val, val_std, far = test_utils.evaluate(emb_array, actual_issame, num_folds=num_folds)
 
     print('acc: %1.3f+-%1.3f' % (np.mean(acc), np.std(acc)))
@@ -92,21 +93,21 @@ def evaluate(sess, enque_op,
     lfw_time = time.time() - start_time
     # Summary
     summary = tf.Summary()
-    summary.value.add(tag = 'lfw/acc', simple_value=np.mean(acc))
-    summary.value.add(tag = 'lfw/vr',  simple_value=val)
-    summary.value.add(tag = 'time/lfw',simple_value=lfw_time)
+    summary.value.add(tag='lfw/acc', simple_value=np.mean(acc))
+    summary.value.add(tag='lfw/vr', simple_value=val)
+    summary.value.add(tag='time/lfw', simple_value=lfw_time)
     summary_writer.add_summary(summary, step)
     with open(os.path.join(log_dir, 'lfw_result.txt'), 'at') as fp:
         fp.write('%d\t%.5f\t%.5f\n' % (step, np.mean(acc), val))
 
-def run_epoch(args, sess, epoch,
-        image_list, label_list,
-        deque_op, enque_op,
-        face_pl, nose_pl, lefteye_pl, rightmouth_pl, labels_pl,
-        lr_fusion_pl, phase_train_pl, batch_size_pl,
-        global_step, total_loss, reg_loss,
-        train_op, summary_op, summary_writer):
 
+def run_epoch(args, sess, epoch,
+              image_list, label_list,
+              deque_op, enque_op,
+              face_pl, nose_pl, lefteye_pl, rightmouth_pl, labels_pl,
+              lr_fusion_pl, phase_train_pl, batch_size_pl,
+              global_step, total_loss, reg_loss,
+              train_op, summary_op, summary_writer):
     batch_num = 0
     '''
     if args.lr_base > 0.0:
@@ -122,19 +123,19 @@ def run_epoch(args, sess, epoch,
 
     index_epoch = sess.run(deque_op)
     label_epoch = np.array(label_list)[index_epoch]
-    face_epoch = np.array(image_list)[index_epoch] # face
-    nose_epoch = np.array( # nose
+    face_epoch = np.array(image_list)[index_epoch]  # face
+    nose_epoch = np.array(  # nose
         [ss.replace('face', 'nose') for ss in face_epoch])
-    lefteye_epoch = np.array( # lefteye
+    lefteye_epoch = np.array(  # lefteye
         [ss.replace('face', 'lefteye') for ss in face_epoch])
-    rightmouth_epoch = np.array( # rightmouth
+    rightmouth_epoch = np.array(  # rightmouth
         [ss.replace('face', 'rightmouth') for ss in face_epoch])
 
-    labels_array = np.expand_dims(label_epoch,1)
-    face_array = np.expand_dims(face_epoch,1)
-    nose_array = np.expand_dims(nose_epoch,1)
-    lefteye_array = np.expand_dims(lefteye_epoch,1)
-    rightmouth_array = np.expand_dims(rightmouth_epoch,1)
+    labels_array = np.expand_dims(label_epoch, 1)
+    face_array = np.expand_dims(face_epoch, 1)
+    nose_array = np.expand_dims(nose_epoch, 1)
+    lefteye_array = np.expand_dims(lefteye_epoch, 1)
+    rightmouth_array = np.expand_dims(rightmouth_epoch, 1)
 
     sess.run(enque_op, {
         face_pl: face_array,
@@ -148,23 +149,23 @@ def run_epoch(args, sess, epoch,
     while batch_num < args.epoch_size:
         start_time = time.time()
         feed_dict = {
-            #lr_base_pl : lr_base,
+            # lr_base_pl : lr_base,
             lr_fusion_pl: lr_fusion,
             phase_train_pl: True,
             batch_size_pl: args.batch_size
         }
-        if batch_num == 0 or (batch_num+1) % 100 == 0:
+        if batch_num == 0 or (batch_num + 1) % 100 == 0:
             err, _, step, reg, summary_str = sess.run([total_loss,
-                train_op, global_step, reg_loss, summary_op],
-                feed_dict=feed_dict)
+                                                       train_op, global_step, reg_loss, summary_op],
+                                                      feed_dict=feed_dict)
             summary_writer.add_summary(summary_str, step)
         else:
             err, _, step, reg = sess.run([total_loss,
-                train_op, global_step, reg_loss],
-                feed_dict=feed_dict)
+                                          train_op, global_step, reg_loss],
+                                         feed_dict=feed_dict)
         duration = time.time() - start_time
         print('Epoch: [%d][%d/%d]\tTime: %.3f\tTotal Loss: %2.3f\tRegLoss: %2.3f' %
-            (epoch, batch_num+1, args.epoch_size, duration, err, np.sum(reg)))
+              (epoch, batch_num + 1, args.epoch_size, duration, err, np.sum(reg)))
         batch_num += 1
         train_time += duration
 
@@ -173,10 +174,11 @@ def run_epoch(args, sess, epoch,
     summary_writer.add_summary(summary, step)
     return step
 
+
 def main(args):
     # ---- set up log&model dir ---- #
     subdir = datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S')
-    log_dir   = os.path.join(args.logs_base_dir, subdir)
+    log_dir = os.path.join(args.logs_base_dir, subdir)
     model_dir = os.path.join(args.models_base_dir, subdir)
     if not os.path.isdir(log_dir):
         os.makedirs(log_dir)
@@ -208,21 +210,21 @@ def main(args):
     with tf.Graph().as_default():
         # random indices producer
         indices_que = tf.train.range_input_producer(range_size)
-        dequeue_op = indices_que.dequeue_many(args.batch_size*args.epoch_size, 'index_dequeue')
+        dequeue_op = indices_que.dequeue_many(args.batch_size * args.epoch_size, 'index_dequeue')
 
         tf.set_random_seed(args.seed)
         random.seed(args.seed)
         np.random.seed(args.seed)
-        global_step   = tf.Variable(0, trainable = False)
-        #lr_base_pl    = tf.placeholder(tf.float32, name='base_learning_rate')
-        lr_fusion_pl  = tf.placeholder(tf.float32, name='fusion_learning_rate')
-        batch_size_pl = tf.placeholder(tf.int32,   name='batch_size')
-        phase_train_pl= tf.placeholder(tf.bool,    name='phase_train')
-        face_pl       = tf.placeholder(tf.string,  name='image_paths1') # face images
-        nose_pl       = tf.placeholder(tf.string,  name='image_paths2') # nose images
-        lefteye_pl    = tf.placeholder(tf.string,  name='image_paths3') # left eye images
-        rightmouth_pl = tf.placeholder(tf.string,  name='image_paths4') # right mouth images
-        labels_pl     = tf.placeholder(tf.int64,   name='labels')
+        global_step = tf.Variable(0, trainable=False)
+        # lr_base_pl    = tf.placeholder(tf.float32, name='base_learning_rate')
+        lr_fusion_pl = tf.placeholder(tf.float32, name='fusion_learning_rate')
+        batch_size_pl = tf.placeholder(tf.int32, name='batch_size')
+        phase_train_pl = tf.placeholder(tf.bool, name='phase_train')
+        face_pl = tf.placeholder(tf.string, name='image_paths1')  # face images
+        nose_pl = tf.placeholder(tf.string, name='image_paths2')  # nose images
+        lefteye_pl = tf.placeholder(tf.string, name='image_paths3')  # left eye images
+        rightmouth_pl = tf.placeholder(tf.string, name='image_paths4')  # right mouth images
+        labels_pl = tf.placeholder(tf.int64, name='labels')
 
         # define a filename queue
         input_queue = tf.FIFOQueue(
@@ -284,8 +286,8 @@ def main(args):
         face_batch, nose_batch, lefteye_batch, rightmouth_batch, label_batch = tf.train.batch_join(
             threads_input_list,
             # [notice: here is 'batch_size_pl', not 'batch_size'!!]
-            batch_size = batch_size_pl,
-            shapes = [
+            batch_size=batch_size_pl,
+            shapes=[
                 # [notice: shape of each element should be assigned, otherwise it raises
                 # "tensorflow queue shapes must have the same length as dtype" exception]
                 (args.image_size, args.image_size, 3),
@@ -293,10 +295,10 @@ def main(args):
                 (args.image_size, args.image_size, 3),
                 (args.image_size, args.image_size, 3),
                 ()],
-            enqueue_many = True,
+            enqueue_many=True,
             # [notice: how long the prefetching is allowed to fill the queue]
-            capacity = 4*num_threads*args.batch_size,
-            allow_smaller_final_batch = True)
+            capacity=4 * num_threads * args.batch_size,
+            allow_smaller_final_batch=True)
         '''
         face_batch = tf.identity(face_batch, 'face_batch')
         face_batch = tf.identity(face_batch, 'input1')
@@ -322,33 +324,33 @@ def main(args):
                 features1, _ = inception_resnet_v1_6c.inference(
                     face_batch,
                     args.keep_prob,
-                    phase_train = phase_train_pl,
-                    weight_decay = args.weight_decay,
-                    scope = 'Face')
+                    phase_train=phase_train_pl,
+                    weight_decay=args.weight_decay,
+                    scope='Face')
             with tf.device('/gpu:%d' % args.gpu_id2):
                 # embeddings for nose model
                 features2, _ = inception_resnet_v1_6c.inference(
                     nose_batch,
                     args.keep_prob,
-                    phase_train = phase_train_pl,
-                    weight_decay = args.weight_decay,
-                    scope = 'Nose')
+                    phase_train=phase_train_pl,
+                    weight_decay=args.weight_decay,
+                    scope='Nose')
             with tf.device('/gpu:%d' % args.gpu_id3):
                 # embeddings for left eye model
                 features3, _ = inception_resnet_v1_6c.inference(
                     lefteye_batch,
                     args.keep_prob,
-                    phase_train = phase_train_pl,
-                    weight_decay = args.weight_decay,
-                    scope = 'Lefteye')
+                    phase_train=phase_train_pl,
+                    weight_decay=args.weight_decay,
+                    scope='Lefteye')
             with tf.device('/gpu:%d' % args.gpu_id4):
                 # embeddings for right mouth model
                 features4, _ = inception_resnet_v1_6c.inference(
                     rightmouth_batch,
                     args.keep_prob,
-                    phase_train = phase_train_pl,
-                    weight_decay = args.weight_decay,
-                    scope = 'Rightmouth')
+                    phase_train=phase_train_pl,
+                    weight_decay=args.weight_decay,
+                    scope='Rightmouth')
         with tf.device('/gpu:%d' % args.gpu_id5):
             with tf.variable_scope("Fusion"):
                 # ---- concatenate ---- #
@@ -357,20 +359,20 @@ def main(args):
                 prelogits = slim.fully_connected(
                     concated_features,
                     args.fusion_dim,
-                    activation_fn = None,
-                    weights_initializer = tf.truncated_normal_initializer(stddev = 0.1),
-                    weights_regularizer = slim.l2_regularizer(args.weight_decay),
-                    scope = 'prelogits',
-                    reuse = False)
+                    activation_fn=None,
+                    weights_initializer=tf.truncated_normal_initializer(stddev=0.1),
+                    weights_regularizer=slim.l2_regularizer(args.weight_decay),
+                    scope='prelogits',
+                    reuse=False)
                 # logits
                 logits = slim.fully_connected(
                     prelogits,
                     num_classes,
-                    activation_fn = None,
-                    weights_initializer = tf.truncated_normal_initializer(stddev = 0.1),
-                    weights_regularizer = slim.l2_regularizer(args.weight_decay),
-                    scope = 'logits',
-                    reuse = False)
+                    activation_fn=None,
+                    weights_initializer=tf.truncated_normal_initializer(stddev=0.1),
+                    weights_regularizer=slim.l2_regularizer(args.weight_decay),
+                    scope='logits',
+                    reuse=False)
                 # normalized feaures
                 # [notice: used in test stage]
                 embeddings = tf.nn.l2_normalize(
@@ -385,14 +387,15 @@ def main(args):
                 name = 'cross_entropy')
             '''
             cross_entropy = - tf.reduce_sum(
-                tf.one_hot(indices=tf.cast(label_batch, tf.int32), depth=num_classes) * tf.log(tf.nn.softmax(logits) + 1e-10),
+                tf.one_hot(indices=tf.cast(label_batch, tf.int32), depth=num_classes) * tf.log(
+                    tf.nn.softmax(logits) + 1e-10),
                 reduction_indices=[1])
             cross_entropy_mean = tf.reduce_mean(cross_entropy)
             tf.add_to_collection('losses', cross_entropy_mean)
             # weight decay
             reg_loss = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
             # total loss: cross_entropy + weight_decay
-            total_loss = tf.add_n([cross_entropy_mean] + reg_loss, name = 'total_loss')
+            total_loss = tf.add_n([cross_entropy_mean] + reg_loss, name='total_loss')
             '''
             lr_base = tf.train.exponential_decay(lr_base_pl,
                 global_step,
@@ -401,11 +404,11 @@ def main(args):
                 staircase = True)
             '''
             lr_fusion = tf.train.exponential_decay(lr_fusion_pl,
-                global_step,
-                args.lr_decay_epochs * args.epoch_size,
-                args.lr_decay_factor,
-                staircase = True)
-            #tf.summary.scalar('base_learning_rate', lr_base)
+                                                   global_step,
+                                                   args.lr_decay_epochs * args.epoch_size,
+                                                   args.lr_decay_factor,
+                                                   staircase=True)
+            # tf.summary.scalar('base_learning_rate', lr_base)
             tf.summary.scalar('fusion_learning_rate', lr_fusion)
             var_list1 = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='BaseModel')
             var_list2 = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='Fusion')
@@ -416,20 +419,20 @@ def main(args):
                 args.moving_average_decay)
             '''
             train_op = train_utils.get_train_op(total_loss,
-                global_step,
-                args.optimizer,
-                lr_fusion,
-                args.moving_average_decay,
-                var_list2)
+                                                global_step,
+                                                args.optimizer,
+                                                lr_fusion,
+                                                args.moving_average_decay,
+                                                var_list2)
 
         # ---- training ---- #
         gpu_options = tf.GPUOptions(allow_growth=True)
-        sess = tf.Session(config = tf.ConfigProto(
-            gpu_options = gpu_options,
-            log_device_placement = False,
+        sess = tf.Session(config=tf.ConfigProto(
+            gpu_options=gpu_options,
+            log_device_placement=False,
             # [notice: 'allow_soft_placement' will switch to cpu automatically
             #  when some operations are not supported by GPU]
-            allow_soft_placement = True))
+            allow_soft_placement=True))
         saver = tf.train.Saver(var_list1 + var_list2)
         summary_op = tf.summary.merge_all()
         summary_writer = tf.summary.FileWriter(log_dir, sess.graph)
@@ -437,18 +440,18 @@ def main(args):
         sess.run(tf.local_variables_initializer())
 
         coord = tf.train.Coordinator()
-        tf.train.start_queue_runners(coord = coord, sess = sess)
+        tf.train.start_queue_runners(coord=coord, sess=sess)
 
         with sess.as_default():
-            # ---- restore pretrained parameters ---- #
+            # ---- restore pre-trained parameters ---- #
             to_assign = []
             print("restore pretrained parameters...")
             print("total:", len(var_list1))
             for v in var_list1:
-                v_name = v.name # 'BaseModel/Face/xxx'
-                v_name = v_name[v_name.find('/')+1:] # 'Face/xxx'
-                v_name_1 = v_name[:v_name.find('/')] # 'Face'
-                v_name_2 = v_name[v_name.find('/'):] # '/xxx'
+                v_name = v.name  # 'BaseModel/Face/xxx'
+                v_name = v_name[v_name.find('/') + 1:]  # 'Face/xxx'
+                v_name_1 = v_name[:v_name.find('/')]  # 'Face'
+                v_name_2 = v_name[v_name.find('/'):]  # '/xxx'
                 print("precess: %s" % v_name, end=" ")
                 if v_name_1 in pretrained:
                     to_assign.append(v.assign(pretrained[v_name_1][v_name_2][0]))
@@ -462,17 +465,17 @@ def main(args):
             print("start training ...")
             epoch = 0
             while epoch < args.max_num_epochs:
-                step = sess.run(global_step, feed_dict = None)
+                step = sess.run(global_step, feed_dict=None)
                 epoch = step // args.epoch_size
 
                 # run one epoch
                 run_epoch(args, sess, epoch,
-                    image_list, label_list,
-                    dequeue_op, enque_op,
-                    face_pl, nose_pl, lefteye_pl, rightmouth_pl, labels_pl,
-                    lr_fusion_pl, phase_train_pl, batch_size_pl,
-                    global_step, total_loss, reg_loss,
-                    train_op, summary_op, summary_writer)
+                          image_list, label_list,
+                          dequeue_op, enque_op,
+                          face_pl, nose_pl, lefteye_pl, rightmouth_pl, labels_pl,
+                          lr_fusion_pl, phase_train_pl, batch_size_pl,
+                          global_step, total_loss, reg_loss,
+                          train_op, summary_op, summary_writer)
 
                 # snapshot for currently learnt weights
                 snapshot(sess, saver, model_dir, subdir, step)
@@ -480,143 +483,145 @@ def main(args):
                 # evaluate on LFW
                 if args.lfw_dir:
                     evaluate(sess, enque_op,
-                        face_pl, nose_pl, lefteye_pl, rightmouth_pl, labels_pl,
-                        phase_train_pl, batch_size_pl,
-                        embeddings, label_batch,
-                        lfw_paths, actual_issame,
-                        args.lfw_batch_size, args.lfw_num_folds,
-                        log_dir, step, summary_writer)
+                             face_pl, nose_pl, lefteye_pl, rightmouth_pl, labels_pl,
+                             phase_train_pl, batch_size_pl,
+                             embeddings, label_batch,
+                             lfw_paths, actual_issame,
+                             args.lfw_batch_size, args.lfw_num_folds,
+                             log_dir, step, summary_writer)
     sess.close()
+
 
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
     # ---- file related ---- #
-    parser.add_argument('--logs_base_dir', type=str, 
-        help='Directory where to write event logs.', default='logs')
+    parser.add_argument('--logs_base_dir', type=str,
+                        help='Directory where to write event logs.', default='logs')
     parser.add_argument('--models_base_dir', type=str,
-        help='Directory where to write trained mdels and checkpoints.', default='models')
+                        help='Directory where to write trained mdels and checkpoints.', default='models')
 
     # ---- pretrained models ---- #
     parser.add_argument("--face_model", type=str,
-        help="path to to pretrained .npy face model",
-        default="pretrained/pretrained_face.npy")
+                        help="path to to pretrained .npy face model",
+                        default="pretrained/pretrained_face.npy")
     parser.add_argument("--nose_model", type=str,
-        help="path to to pretrained .npy nose model",
-        default="pretrained/pretrained_nose.npy")
+                        help="path to to pretrained .npy nose model",
+                        default="pretrained/pretrained_nose.npy")
     parser.add_argument("--lefteye_model", type=str,
-        help="path to to pretrained .npy lefteye model",
-        default="pretrained/pretrained_lefteye.npy")
+                        help="path to to pretrained .npy lefteye model",
+                        default="pretrained/pretrained_lefteye.npy")
     parser.add_argument("--rightmouth_model", type=str,
-        help="path to to pretrained .npy rightmouth model",
-        default="pretrained/pretrained_rightmouth.npy")
+                        help="path to to pretrained .npy rightmouth model",
+                        default="pretrained/pretrained_rightmouth.npy")
     parser.add_argument('--imglist', type=str,
-        help='Training images list.',
-        default='/export_data/czj/data/casia/files/train_set.txt')
+                        help='Training images list.',
+                        default='/export_data/czj/data/casia/files/train_set.txt')
 
     # ---- training related ---- #
     parser.add_argument('--seed', type=int,
-        help='Random seed.',
-        default=666)
+                        help='Random seed.',
+                        default=666)
     parser.add_argument('--max_num_epochs', type=int,
-        help='Number of epochs to run.',
-        default=80)
+                        help='Number of epochs to run.',
+                        default=80)
     parser.add_argument('--batch_size', type=int,
-        help='Number of images to process in a batch.',
-        default=10)
+                        help='Number of images to process in a batch.',
+                        default=10)
     parser.add_argument('--epoch_size', type=int,
-        help='Number of batches per epoch.',
-        default=1000)
+                        help='Number of batches per epoch.',
+                        default=1000)
     parser.add_argument('--data_dir', type=str,
-        help='Path to the data directory containing aligned faces.',
-        default='/exports_data/czj/data/lfw/lfw_aligned/')
+                        help='Path to the data directory containing aligned faces.',
+                        default='/exports_data/czj/data/lfw/lfw_aligned/')
     parser.add_argument('--gpu_id1', type=int,
-        help='available gpu id 1',
-        default=1)
+                        help='available gpu id 1',
+                        default=1)
     parser.add_argument('--gpu_id2', type=int,
-        help='available gpu id 2',
-        default=2)
+                        help='available gpu id 2',
+                        default=2)
     parser.add_argument('--gpu_id3', type=int,
-        help='available gpu id 3',
-        default=3)
+                        help='available gpu id 3',
+                        default=3)
     parser.add_argument('--gpu_id4', type=int,
-        help='available gpu id 4',
-        default=4)
+                        help='available gpu id 4',
+                        default=4)
     parser.add_argument('--gpu_id5', type=int,
-        help='available gpu id 5',
-        default=5)
+                        help='available gpu id 5',
+                        default=5)
     parser.add_argument('--random_crop',
-        help='Performs random cropping of training images. If false, the center image_size pixels from the training images are used. ' +
-         'If the size of the images in the data directory is equal to image_size no cropping is performed',
-        action='store_true')
-    parser.add_argument('--random_flip', 
-        help='Performs random horizontal flipping of training images.',
-        action='store_true')
+                        help='Performs random cropping of training images. If false, the center image_size pixels from the training images are used. ' +
+                             'If the size of the images in the data directory is equal to image_size no cropping is performed',
+                        action='store_true')
+    parser.add_argument('--random_flip',
+                        help='Performs random horizontal flipping of training images.',
+                        action='store_true')
     parser.add_argument('--image_size', type=int,
-        help='Image size (height, width) in pixels.',
-        default=160)
+                        help='Image size (height, width) in pixels.',
+                        default=160)
 
     # ---- regularity ---- #
     parser.add_argument('--keep_prob', type=float,
-        help='Keep probability of dropout for the fully connected layer(s).',
-        default=1.0)
+                        help='Keep probability of dropout for the fully connected layer(s).',
+                        default=1.0)
     parser.add_argument('--weight_decay', type=float,
-        help='L2 weight regularization.',
-        default=0.0)
+                        help='L2 weight regularization.',
+                        default=0.0)
 
     # ---- learning strategy ---- #
     parser.add_argument('--lr_base', type=float,
-        help='Learning rate for base model',
-        default=0.0001)
+                        help='Learning rate for base model',
+                        default=0.0001)
     parser.add_argument('--lr_fusion', type=float,
-        help='Learning rate for fusion model',
-        default=0.01)
+                        help='Learning rate for fusion model',
+                        default=0.01)
     parser.add_argument('--lr_decay_epochs', type=int,
-        help='Number of epochs between learning rate decay.',
-        default=100)
+                        help='Number of epochs between learning rate decay.',
+                        default=100)
     parser.add_argument('--moving_average_decay', type=float,
-        help='Exponential decay for tracking of training parameters.',
-        default=0.9999)
+                        help='Exponential decay for tracking of training parameters.',
+                        default=0.9999)
     parser.add_argument('--lr_decay_factor', type=float,
-        help='Learning rate decay factor.',
-        default=1.0)
+                        help='Learning rate decay factor.',
+                        default=1.0)
     parser.add_argument('--optimizer', type=str,
-        choices=['ADAGRAD', 'ADADELTA', 'ADAM', 'RMSPROP', 'MOM'],
-        help='The optimization algorithm to use',
-        default='ADAGRAD')
+                        choices=['ADAGRAD', 'ADADELTA', 'ADAM', 'RMSPROP', 'MOM'],
+                        help='The optimization algorithm to use',
+                        default='ADAGRAD')
     parser.add_argument('--lr_base_schedule_file', type=str,
-        help='File containing the learning rate schedule that is used when learning_rate is set to to -1.',
-        default='lr_decay_base.txt')
+                        help='File containing the learning rate schedule that is used when learning_rate is set to to -1.',
+                        default='lr_decay_base.txt')
     parser.add_argument('--lr_fusion_schedule_file', type=str,
-        help='File containing the learning rate schedule that is used when learning_rate is set to to -1.',
-        default='lr_decay_fusion.txt')
+                        help='File containing the learning rate schedule that is used when learning_rate is set to to -1.',
+                        default='lr_decay_fusion.txt')
 
     # ---- log related ---- #
-    parser.add_argument('--log_histograms', 
-        help='Enables logging of weight/bias histograms in tensorboard.',
-        action='store_true')
+    parser.add_argument('--log_histograms',
+                        help='Enables logging of weight/bias histograms in tensorboard.',
+                        action='store_true')
 
     # ---- LFW related ---- #
     parser.add_argument('--lfw_pairs', type=str,
-        help='LFW pairs file.',
-        default='')
+                        help='LFW pairs file.',
+                        default='')
     parser.add_argument('--lfw_file_ext', type=str,
-        help='The file extension for the LFW dataset.',
-        default='_face_.jpg')
+                        help='The file extension for the LFW dataset.',
+                        default='_face_.jpg')
     parser.add_argument('--lfw_dir', type=str,
-        help='Path to the data directory containing aligned face patches.', 
-        default=10)
+                        help='Path to the data directory containing aligned face patches.',
+                        default=10)
     parser.add_argument('--lfw_batch_size', type=int,
-        help='Number of images to process in a batch in the LFW test set.',
-        default=10)
+                        help='Number of images to process in a batch in the LFW test set.',
+                        default=10)
     parser.add_argument('--lfw_num_folds', type=int,
-        help='Number of folds to use for cross validation. Mainly used for testing.',
-        default=10)
+                        help='Number of folds to use for cross validation. Mainly used for testing.',
+                        default=10)
 
     # ---- hyper parameters ---- #
     parser.add_argument('--fusion_dim', type=int,
-        help='Dimension of fusion features',
-        default=128)
+                        help='Dimension of fusion features',
+                        default=128)
     return parser.parse_args(argv)
+
 
 if __name__ == '__main__':
     main(parse_arguments(sys.argv[1:]))
