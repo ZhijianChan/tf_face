@@ -7,4 +7,6 @@ lr_decay_subset_*
 tmp.txt
 20170710-*
 resume*
-
+run_train_ms*
+run_train_patch*
+run_train_subset_*
