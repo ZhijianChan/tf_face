@@ -1,12 +1,10 @@
 *.pyc
 .idea/*
 log*
-models/2017*
 pretrained/*
-lr_decay_1.txt
-lr_decay_2.txt
-lr_decay_3.txt
-lr_decay_4.txt
-lr_decay_5.txt
+lr_decay_ms*
+lr_decay_subset_*
 tmp.txt
 20170710-*
+resume*
+
