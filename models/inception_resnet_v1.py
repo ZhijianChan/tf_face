@@ -156,7 +156,7 @@ def inception_resnet_v1(image_batch,
                     x = reduction_b(x)
                 end_points['Mixed_7a'] = x
 
-                x = slim.repeat(x, 5, block8, scale=0.20)
+                x = slim.repeat(x, 6, block8, scale=0.20)
                 # x = block8(x, activation_fn=None)
 
                 with tf.variable_scope('AvgPool'):

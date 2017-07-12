@@ -29,7 +29,7 @@ def main(args):
                 # restore model
                 test_utils.load_model(sess, model[0])
                 # load data tensor
-                images_pl = tf.get_default_graph().get_tensor_by_name('input:0')
+                images_pl = tf.get_default_graph().get_tensor_by_name('image_batch:0')
                 embeddings = tf.get_default_graph().get_tensor_by_name('embeddings:0')
                 phase_train_pl = tf.get_default_graph().get_tensor_by_name('phase_train:0')
                 image_size = args.image_size

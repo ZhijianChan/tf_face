@@ -38,46 +38,42 @@ def snapshot(sess, saver, model_dir, model_name, step):
         print('metagraph saved in %.2f seconds' % duration)
 
 
-def evaluate(sess, enque_op,
-             imgpaths_pl, labels_pl,
-             phase_train_pl, batch_size_pl,
-             embeddings, labels,
-             image_list, actual_issame,
-             batch_size, num_folds,
-             log_dir, step, summary_writer):
+def evaluate(args, sess, enque_op, log_dir, step, summary_writer,
+             paths_pl, label_pl, phase_train_pl, batch_size_pl,
+             embeddings, label_batch, lfw_paths, lfw_label):
     print("evaluating on lfw...")
     start_time = time.time()
 
     # Enqueue one epoch of image paths and labels
-    labels_array = np.expand_dims(np.arange(0, len(image_list)), 1)
-    paths_array = np.expand_dims(np.array(image_list), 1)
+    labels_array = np.expand_dims(np.arange(0, len(lfw_paths)), 1)
+    paths_array = np.expand_dims(np.array(lfw_paths), 1)
 
     sess.run(enque_op, {
-        imgpaths_pl: paths_array,
-        labels_pl: labels_array
+        paths_pl: paths_array,
+        label_pl: labels_array
     })
 
     embeddings_dim = embeddings.get_shape()[1]
-    num_images = len(actual_issame) * 2
-    assert num_images % batch_size == 0, 'Num of sample must be even.'
+    num_images = len(lfw_label) * 2
+    assert num_images % args.lfw_batch_size == 0, 'Num of sample must be even.'
 
-    num_batches = num_images // batch_size
+    num_batches = num_images // args.lfw_batch_size
     emb_array = np.zeros((num_images, embeddings_dim))
     lab_array = np.zeros((num_images,))
     for i in range(num_batches):
         feed_dict = {
             phase_train_pl: False,
-            batch_size_pl: batch_size
+            batch_size_pl: args.lfw_batch_size
         }
-        emb, lab = sess.run([embeddings, labels], feed_dict=feed_dict)
+        emb, lab = sess.run([embeddings, label_batch], feed_dict=feed_dict)
         lab_array[lab] = lab
         emb_array[lab] = emb
 
     assert np.array_equal(lab_array, np.arange(num_images)) == True, 'Wrong labels used for evaluation'
-    _, _, acc, val, val_std, far = test_utils.evaluate(emb_array, actual_issame, num_folds=num_folds)
+    _, _, acc, val, val_std, far = test_utils.evaluate(emb_array, lfw_label)
 
     print('acc: %1.3f+-%1.3f' % (np.mean(acc), np.std(acc)))
-    print('vr : %2.5f+=%2.5f @ FAR=%2.5F' % (val, val_std, far))
+    print('vr : %2.5f+-%2.5f @ FAR=%2.5F' % (val, val_std, far))
     lfw_time = time.time() - start_time
     # Summary
     summary = tf.Summary()
@@ -89,68 +85,82 @@ def evaluate(sess, enque_op,
         fp.write('%d\t%.5f\t%.5f\n' % (step, np.mean(acc), val))
 
 
-def run_epoch(args, sess, epoch,
-              image_list, label_list,
-              deque_op, enque_op,
-              imgpaths_pl, labels_pl, lr_pl,
-              phase_train_pl, batch_size_pl,
-              global_step, total_loss, reg_loss,
-              train_op, summary_op, summary_writer):
-    batch_num = 0
+def run_epoch(args, sess, epoch, paths_list, label_list, summary_writer, batch_num,
+              enque_op, train_op, summary_op,
+              paths_pl, label_pl, lr_pl, phase_train_pl, batch_size_pl,
+              global_step, total_loss, reg_loss, softmax_loss):
+    batch_cnt = 0
     if args.lr > 0.0:
         lr = args.lr
     else:
         lr = train_utils.get_learning_rate_from_file(args.lr_schedule_file, epoch)
 
-    index_epoch = sess.run(deque_op)
-    label_epoch = np.array(label_list)[index_epoch]
-    image_epoch = np.array(image_list)[index_epoch]
+    # shuffled indices list
+    indices = np.arange(paths_list.shape[0])
+    np.random.shuffle(indices)
 
-    # Enqueue one epoch of image paths and labels
+    total_image = args.batch_size * batch_num
+    print('Actual total:  %d' % total_image)
+    loaded_image = 90112  # 90112 = 128 * 704
+    remain_image = 90112
+    index_batch = indices[0:loaded_image]
+
+    # enqueue first branch of images
     # [notice: expand_dims: (n,) -> (n,1)]
-    labels_array = np.expand_dims(label_epoch, 1)
-    paths_array = np.expand_dims(image_epoch, 1)
-    sess.run(enque_op, {
-        imgpaths_pl: paths_array,
-        labels_pl: labels_array
-    })
+    label_array = np.expand_dims(label_list[index_batch], 1)
+    paths_array = np.expand_dims(paths_list[index_batch], 1)
+    sess.run(enque_op, {label_pl:label_array, paths_pl:paths_array})
 
     train_time = 0
-    while batch_num < args.epoch_size:
+    while batch_cnt < batch_num:
         start_time = time.time()
+
+        if remain_image == 0:
+            beg = loaded_image
+            end = min(loaded_image + 90112, total_image)
+            print('remain:%d\tloaded:%d\tto_load: %d' % (remain_image, loaded_image, end-beg))
+            index_batch = indices[beg:end]
+            label_array = np.expand_dims(label_list[index_batch], 1)
+            paths_array = np.expand_dims(paths_list[index_batch], 1)
+            sess.run(enque_op, {
+                paths_pl: paths_array,
+                label_pl: label_array
+            })
+            loaded_image += (end - beg)
+            remain_image += (end - beg)
+
         feed_dict = {
             lr_pl: lr,
-            # [notice: 'phase_train_pl' is required by dropout]
-            phase_train_pl: True,
-            batch_size_pl: args.batch_size
+            phase_train_pl: True,  # [notice: 'phase_train_pl' is used by dropout]
+            batch_size_pl: args.batch_size  # [notice: 'batch_size' is used by batch_join]
         }
-        # [notice: summary every 100 step]
-        if batch_num == 0 or (batch_num + 1) % 100 == 0:
-            err, _, step, reg, summary_str = sess.run([total_loss,
-                                                       train_op, global_step, reg_loss, summary_op],
-                                                      feed_dict=feed_dict)
+
+        if batch_cnt == 0 or (batch_cnt + 1) % 100 == 0:
+            _, step, t_loss, r_loss, s_loss, summary_str = sess.run([train_op, global_step,
+                total_loss, reg_loss, softmax_loss, summary_op],
+                feed_dict=feed_dict)
             summary_writer.add_summary(summary_str, step)
         else:
-            err, _, step, reg = sess.run([total_loss,
-                                          train_op, global_step, reg_loss],
-                                         feed_dict=feed_dict)
+            _, step, t_loss, r_loss, s_loss = sess.run([train_op, global_step,
+                total_loss, reg_loss, softmax_loss],
+                feed_dict=feed_dict)
         duration = time.time() - start_time
-        print('Epoch: [%d][%d/%d]\tTime: %.3f\tTotal Loss: %2.3f\tRegLoss: %2.3f' %
-              (epoch, batch_num + 1, args.epoch_size, duration, err, np.sum(reg)))
-        batch_num += 1
+        batch_cnt += 1
         train_time += duration
+        remain_image -= args.batch_size
+        print('Epoch: [%d][%d/%d]\tTime: %.3f\tTotalLoss: %2.3f\tSoftmaxLoss: %2.3f\tRegLoss: %2.3f\tRemain_images: %d (loaded: %d)' %
+              (epoch, step, batch_num, duration, t_loss, s_loss, np.sum(r_loss), remain_image, loaded_image))
 
     summary = tf.Summary()
     summary.value.add(tag='time/total', simple_value=train_time)
     summary_writer.add_summary(summary, step)
-    return step
 
 
 def main(args):
     model_module = importlib.import_module(args.model_def)
     subdir = datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S')
-    log_dir = os.path.join(args.logs_base_dir, subdir)
-    model_dir = os.path.join(args.models_base_dir, subdir)
+    log_dir = os.path.join(args.logs_base_dir, subdir, 'logs')
+    model_dir = os.path.join(args.logs_base_dir, subdir, 'models')
     if not os.path.isdir(log_dir):
         os.makedirs(log_dir)
     if not os.path.isdir(model_dir):
@@ -161,36 +171,36 @@ def main(args):
     if args.lfw_dir:
         print('LFW directory: %s' % args.lfw_dir)
         pairs = test_utils.read_pairs(args.lfw_pairs)
-        lfw_paths, actual_issame = test_utils.get_paths(args.lfw_dir, pairs, args.lfw_file_ext)
+        lfw_paths, lfw_label = test_utils.get_paths(args.lfw_dir, pairs, args.lfw_file_ext)
 
     with tf.Graph().as_default():
         # ---- data prepration ---- #
-        image_list, label_list, num_classes = train_utils.get_datasets(args.data_dir, args.imglist_path)
-        range_size = len(image_list)
+        paths_list, label_list, num_classes = train_utils.get_datasets(args.data_dir, args.imglist_path)
+        range_size = len(paths_list)
+        batch_num = paths_list.shape[0] // args.batch_size
+
         assert range_size > 0, 'The dataset should not be empty.'
-        # random indices producer
-        indices_que = tf.train.range_input_producer(range_size)
-        deque_op = indices_que.dequeue_many(args.batch_size * args.epoch_size, 'index_dequeue')
 
         tf.set_random_seed(args.seed)
         random.seed(args.seed)
         np.random.seed(args.seed)
-        global_step = tf.Variable(0, trainable=False)
+
+        global_step = tf.Variable(0, trainable=False) if (not args.pretrained_step) else tf.Variable(args.pretrained_step, trainable=False)
         lr_pl = tf.placeholder(tf.float32, name='learning_rate')
         batch_size_pl = tf.placeholder(tf.int32, name='batch_size')
         phase_train_pl = tf.placeholder(tf.bool, name='phase_train')
-        imgpaths_pl = tf.placeholder(tf.string, name='image_paths')
-        labels_pl = tf.placeholder(tf.int64, name='labels')
+        paths_pl = tf.placeholder(tf.string, name='image_paths')
+        label_pl = tf.placeholder(tf.int64, name='labels')
 
         # filename queue
         input_queue = tf.FIFOQueue(
-            # [notice: capacity > bach_size*epoch_size]
+            # [notice: capacity > enqueued num]
             capacity=100000,
             dtypes=[tf.string, tf.int64],
             shapes=[(1,), (1,)],
             shared_name=None, name='input_que')
         enque_op = input_queue.enqueue_many(
-            [imgpaths_pl, labels_pl],
+            [paths_pl, label_pl],
             name='enque_op')
         # define 4 readers
         num_threads = 4
@@ -222,7 +232,6 @@ def main(args):
             capacity=4 * num_threads * args.batch_size,
             allow_smaller_final_batch=True)
         image_batch = tf.identity(image_batch, 'image_batch')
-        image_batch = tf.identity(image_batch, 'input')
         label_batch = tf.identity(label_batch, 'label_batch')
         print('Total classes: %d' % num_classes)
         print('Total images:  %d' % range_size)
@@ -262,29 +271,35 @@ def main(args):
                 tf.add_to_collection(tf.GraphKeys.REGULARIZATION_LOSSES,
                                      prelogits_center_loss * args.center_loss_factor)
             # cross-entropy
+            '''
+            # [notice: this version may cause nan problem]
             cross_entropy_mean = tf.reduce_mean(
                 tf.nn.sparse_softmax_cross_entropy_with_logits(
                     labels=label_batch,
                     logits=logits),
                 name='cross_entropy')
-            tf.add_to_collection('losses', cross_entropy_mean)
+            '''  
+            cross_entropy = - tf.reduce_sum(
+                    tf.one_hot(indices=tf.cast(label_batch, tf.int32), depth=num_classes) *
+                    tf.log( tf.nn.softmax(logits) + 1e-10), reduction_indices=[1])
+            cross_entropy_mean = tf.reduce_mean(cross_entropy)
+            tf.summary.scalar('cross_entropy', cross_entropy_mean)
+            # tf.add_to_collection('losses', cross_entropy_mean)
             # regularity: weight decay
             reg_loss = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
             # total loss
             total_loss = tf.add_n([cross_entropy_mean] + reg_loss, name='total_loss')
+            tf.summary.scalar('total_loss', total_loss)
             # [notice: here we decay manually]
             lr = tf.train.exponential_decay(lr_pl,
                                             global_step,
-                                            args.lr_decay_epochs * args.epoch_size,
+                                            args.lr_decay_epochs * batch_num,
                                             args.lr_decay_factor,
                                             staircase=True)
             tf.summary.scalar('learning_rate', lr)
-            train_op = train_utils.get_train_op(total_loss,
-                                                global_step,
-                                                args.optimizer,
-                                                lr,
+            train_op = train_utils.get_train_op(total_loss, global_step,
+                                                args.optimizer, lr,
                                                 args.moving_average_decay,
-                                                # what is the usage of tf.global_variables()?
                                                 tf.trainable_variables())
 
         # ---- training ---- #
@@ -314,27 +329,22 @@ def main(args):
             epoch = 0
             while epoch < args.max_num_epochs:
                 step = sess.run(global_step, feed_dict=None)  # training counter
-                epoch = step // args.epoch_size
+                epoch = step // batch_num
 
-                # run epoch
-                run_epoch(args, sess, epoch,
-                          image_list, label_list,
-                          deque_op, enque_op,
-                          imgpaths_pl, labels_pl, lr_pl,
-                          phase_train_pl, batch_size_pl,
-                          global_step, total_loss, reg_loss,
-                          train_op, summary_op, summary_writer)
+                # run one epoch
+                 run_epoch(args, sess, epoch, paths_list, label_list, summary_writer, batch_num,
+                          enque_op, train_op, summary_op,
+                          paths_pl, label_pl, lr_pl, phase_train_pl, batch_size_pl,
+                          global_step, total_loss, reg_loss, cross_entropy_mean)
 
                 # snapshot for currently learnt weights
-                snapshot(sess, saver, model_dir, subdir, step)
+                snapshot(sess, saver, model_dir, subdir, step+batch_num-1)
 
                 # evaluate on LFW
                 if args.lfw_dir:
-                    evaluate(sess, enque_op, imgpaths_pl, labels_pl,
-                             phase_train_pl, batch_size_pl,
-                             embeddings, label_batch, lfw_paths, actual_issame,
-                             args.lfw_batch_size, args.lfw_num_folds,
-                             log_dir, step, summary_writer)
+                    evaluate(args, sess, enque_op, log_dir, step, summary_writer,
+                            paths_pl, label_pl, phase_train_pl, batch_size_pl,
+                            embeddings, label_batch, lfw_paths, lfw_label)
     sess.close()
 
 
@@ -347,20 +357,15 @@ def parse_arguments(argv):
     parser.add_argument('--logs_base_dir', type=str,
                         help='Directory where to write event logs.',
                         default='logs')
-    parser.add_argument('--models_base_dir', type=str,
-                        help='Directory where to write trained mdels and checkpoints.',
-                        default='models')
     parser.add_argument('--imglist_path', type=str,
-                        help='Training images list.',
-                        default='/export_data/czj/data/casia/files/train_set.txt')
+                        help='Training images list.')
     parser.add_argument('--data_dir', type=str,
-                        help='Path to the data directory containing aligned faces.',
-                        default='/exports_data/czj/data/lfw/lfw_aligned/')
+                        help='Path to the data directory containing aligned faces.')
 
     # ---- data related ---- #
     parser.add_argument('--image_size', type=int,
                         help='Image size (height, width) in pixels.',
-                        default=96)
+                        default=160)
     parser.add_argument('--random_crop',
                         help='Performs random cropping of training images. If false, the center image_size pixels from the training images are used. ' +
                              'If the size of the images in the data directory is equal to image_size no cropping is performed',
@@ -382,9 +387,6 @@ def parse_arguments(argv):
     parser.add_argument('--batch_size', type=int,
                         help='Number of images to process in a batch.',
                         default=10)
-    parser.add_argument('--epoch_size', type=int,
-                        help='Number of batches per epoch.',
-                        default=1000)
     parser.add_argument('--keep_prob', type=float,
                         help='Keep probability of dropout for the fully connected layer(s).',
                         default=1.0)
@@ -421,6 +423,8 @@ def parse_arguments(argv):
                         default=0)
 
     # ---- model related ---- #
+    parser.add_argument('--pretrained_step', type=int,
+                        help='Resume training at pretrained_step')
     parser.add_argument('--pretrained_model', type=str,
                         help='Load a pretrained model before training starts.')
     parser.add_argument('--embedding_size', type=int,
@@ -444,9 +448,6 @@ def parse_arguments(argv):
                         help='Path to the data directory containing aligned face patches.')
     parser.add_argument('--lfw_batch_size', type=int,
                         help='Number of images to process in a batch in the LFW test set.',
-                        default=10)
-    parser.add_argument('--lfw_num_folds', type=int,
-                        help='Number of folds to use for cross validation. Mainly used for testing.',
                         default=10)
     return parser.parse_args(argv)
 

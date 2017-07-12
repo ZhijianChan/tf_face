@@ -3,10 +3,12 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+import numpy as np
 import os
 
 
 def get_learning_rate_from_file(filename, epoch):
+    learning_rate = 0.1
     with open(filename, 'r') as fp:
         for line in fp:
             par = line.strip().split(':')
@@ -14,10 +16,10 @@ def get_learning_rate_from_file(filename, epoch):
             lr = float(par[1])
             if e <= epoch:
                 learning_rate = lr
-            else:
-                return learning_rate
+    return learning_rate
 
 
+'''
 def _add_loss_summaries(total_loss):
     """Add summaries for losses.
     Generates moving average for all losses and associated summaries for
@@ -39,6 +41,7 @@ def _add_loss_summaries(total_loss):
         # [notice: 'average(var)' returns the variable holding the average of 'var']
         tf.summary.scalar(l.op.name, loss_averages_op.average(l))
     return loss_averages_op
+'''
 
 
 def get_fusion_train_op(total_loss, global_step, optimizer,
@@ -160,7 +163,7 @@ def center_loss(features, label, alpha, num_classes):
 def get_datasets(data_dir, imglist_path):
     """Load imglist, which contains 'img_path label' in each line"""
     mdict = {}
-    image_list = []
+    paths_list = []
     label_list = []
     with open(imglist_path) as fp:
         for line in fp:
@@ -168,6 +171,6 @@ def get_datasets(data_dir, imglist_path):
             imgpath = os.path.join(data_dir, items[0])
             label = int(items[1])
             mdict[label] = 1
-            image_list.append(imgpath)
+            paths_list.append(imgpath)
             label_list.append(label)
-    return image_list, label_list, len(mdict.keys())
+    return np.array(paths_list), np.array(label_list), len(mdict.keys())
