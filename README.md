@@ -24,7 +24,7 @@
 ![figure1](/pictures/figure1.png)
 
 <br/><br/>
-### Some observations
+### Some observations of hyper-parameters tunning
 #### 1. Learning rate -- dropping lr too quickly may cause early stopping
 
 ![figure2](/pictures/figure2.png)
