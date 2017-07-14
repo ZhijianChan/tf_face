@@ -1,5 +1,6 @@
 *.pyc
 .idea/*
+data/*
 log*
 pretrained/*
 lr_decay_ms*

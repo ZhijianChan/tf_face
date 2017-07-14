@@ -31,7 +31,6 @@ def main(args):
             # [notice: the name of parameter is like 'Resnet/conv2d/bias:0',
             #  here we should remove the prefix name, and get '/conv2d/bias:0']
             v_name = v.name
-            v_name = v_name[v_name.find('/'):]
             pretrained[v_name] = sess.run([v])
     np.save(args.save_path, pretrained)
     print("done:", len(pretrained.keys()))
