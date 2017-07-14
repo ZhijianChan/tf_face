@@ -19,7 +19,7 @@ def main(args):
     model_list = test_utils.get_model_list(args.model_list)
     for t, model in enumerate(model_list):
         # get lfw pair filename
-        paths, actual_issame = test_utils.get_paths(args.lfw_dir, pairs, model[1])
+        paths, labels = test_utils.get_paths(args.lfw_dir, pairs, model[1])
         with tf.device('/gpu:%d' % (t + 1)):
             gpu_options = tf.GPUOptions(allow_growth=True)
             sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options,
@@ -43,7 +43,7 @@ def main(args):
                     print('process %d/%d' % (i + 1, num_batches), end='\r')
                     beg_idx = i * batch_size
                     end_idx = min((i + 1) * batch_size, num_images)
-                    images = test_utils.load_data(paths[beg_idx:end_idx], False, False, image_size)
+                    images = test_utils.load_data(paths[beg_idx:end_idx], image_size)
                     emb = sess.run(embeddings, feed_dict={images_pl: images, phase_train_pl: False})
                     emb_arr[beg_idx:end_idx, :] = emb
         # get lfw pair filename
@@ -61,7 +61,7 @@ def main(args):
         emb_ensemble[i] = emb_ensemble[i] / norm[i]
     '''
 
-    tpr, fpr, acc, vr, vr_std, far = test_utils.evaluate(emb_ensemble, actual_issame, num_folds=args.num_folds)
+    tpr, fpr, acc, vr, vr_std, far = test_utils.evaluate(emb_ensemble, labels, num_folds=args.num_folds)
     # display
     auc = metrics.auc(fpr, tpr)
     eer = brentq(lambda x: 1. - x - interpolate.interp1d(fpr, tpr)(x), 0., 1.)
@@ -76,12 +76,10 @@ def parse_arguments(argv):
     parser.add_argument('lfw_dir', type=str,
                         help='Path to the data directory containing aligned LFW face patches.')
     parser.add_argument('lfw_pairs', type=str,
-                        help='The file containing the pairs to use for validation.',
-                        default='../files/pairs.txt')
+                        help='The file containing the pairs to use for validation.')
     parser.add_argument('model_list', type=str,
                         help='A file containing model path and corrsponding file type')
-    parser.add_argument('--lfw_batch_size', type=int,
-                        help='Mini-batch size', default=20)
+    parser.add_argument('--lfw_batch_size', type=int, default=20)
     parser.add_argument('--image_size', type=int,
                         help='Image size (height, width) in pixels.', default=160)
     parser.add_argument('--num_folds', type=int,
