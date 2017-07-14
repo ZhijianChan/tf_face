@@ -15,7 +15,7 @@ from datetime import datetime
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
-from models import inception_resnet_v1_6c
+from models import inception_resnet_v1
 
 
 def snapshot(sess, saver, model_dir, model_name, step):
@@ -176,10 +176,9 @@ def run_epoch(args, sess, epoch,
 
 
 def main(args):
-    # ---- set up log&model dir ---- #
     subdir = datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S')
-    log_dir = os.path.join(args.logs_base_dir, subdir)
-    model_dir = os.path.join(args.models_base_dir, subdir)
+    log_dir = os.path.join(args.logs_base_dir, subdir, 'logs')
+    model_dir = os.path.join(args.logs_base_dir, subdir, 'models')
     if not os.path.isdir(log_dir):
         os.makedirs(log_dir)
     if not os.path.isdir(model_dir):
@@ -299,17 +298,6 @@ def main(args):
             # [notice: how long the prefetching is allowed to fill the queue]
             capacity=4 * num_threads * args.batch_size,
             allow_smaller_final_batch=True)
-        '''
-        face_batch = tf.identity(face_batch, 'face_batch')
-        face_batch = tf.identity(face_batch, 'input1')
-        nose_batch = tf.identity(nose_batch, 'nose_batch')
-        nose_batch = tf.identity(nose_batch, 'input2')
-        lefteye_batch = tf.identity(lefteye_batch, 'lefteye_batch')
-        lefteye_batch = tf.identity(lefteye_batch, 'input3')
-        rightmouth_batch = tf.identity(rightmouth_batch, 'rightmouth_batch')
-        rightmouth_batch = tf.identity(rightmouth_batch, 'input4')
-        label_batch = tf.identity(label_batch, 'label_batch')
-        '''
         print('Total classes: %d' % num_classes)
         print('Total images:  %d' % range_size)
         tf.summary.image('face_images', face_batch, 10)
@@ -321,7 +309,7 @@ def main(args):
         with tf.variable_scope('BaseModel'):
             with tf.device('/gpu:%d' % args.gpu_id1):
                 # embeddings for face model
-                features1, _ = inception_resnet_v1_6c.inference(
+                features1, _ = inception_resnet_v1.inference(
                     face_batch,
                     args.keep_prob,
                     phase_train=phase_train_pl,
@@ -329,7 +317,7 @@ def main(args):
                     scope='Face')
             with tf.device('/gpu:%d' % args.gpu_id2):
                 # embeddings for nose model
-                features2, _ = inception_resnet_v1_6c.inference(
+                features2, _ = inception_resnet_v1.inference(
                     nose_batch,
                     args.keep_prob,
                     phase_train=phase_train_pl,
@@ -337,7 +325,7 @@ def main(args):
                     scope='Nose')
             with tf.device('/gpu:%d' % args.gpu_id3):
                 # embeddings for left eye model
-                features3, _ = inception_resnet_v1_6c.inference(
+                features3, _ = inception_resnet_v1.inference(
                     lefteye_batch,
                     args.keep_prob,
                     phase_train=phase_train_pl,
@@ -345,7 +333,7 @@ def main(args):
                     scope='Lefteye')
             with tf.device('/gpu:%d' % args.gpu_id4):
                 # embeddings for right mouth model
-                features4, _ = inception_resnet_v1_6c.inference(
+                features4, _ = inception_resnet_v1.inference(
                     rightmouth_batch,
                     args.keep_prob,
                     phase_train=phase_train_pl,
@@ -379,13 +367,6 @@ def main(args):
                     prelogits, 1, 1e-10, name='embeddings')
 
             # ---- define loss & train op ---- #
-            '''
-            cross_entropy_mean = tf.reduce_min(
-                tf.nn.sparse_softmax_cross_entropy_with_logits(
-                    labels = label_batch,
-                    logits = logits),
-                name = 'cross_entropy')
-            '''
             cross_entropy = - tf.reduce_sum(
                 tf.one_hot(indices=tf.cast(label_batch, tf.int32), depth=num_classes) * tf.log(
                     tf.nn.softmax(logits) + 1e-10),
@@ -497,8 +478,6 @@ def parse_arguments(argv):
     # ---- file related ---- #
     parser.add_argument('--logs_base_dir', type=str,
                         help='Directory where to write event logs.', default='logs')
-    parser.add_argument('--models_base_dir', type=str,
-                        help='Directory where to write trained mdels and checkpoints.', default='models')
 
     # ---- pretrained models ---- #
     parser.add_argument("--face_model", type=str,

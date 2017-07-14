@@ -332,7 +332,7 @@ def main(args):
                 epoch = step // batch_num
 
                 # run one epoch
-                 run_epoch(args, sess, epoch, paths_list, label_list, summary_writer, batch_num,
+                run_epoch(args, sess, epoch, paths_list, label_list, summary_writer, batch_num,
                           enque_op, train_op, summary_op,
                           paths_pl, label_pl, lr_pl, phase_train_pl, batch_size_pl,
                           global_step, total_loss, reg_loss, cross_entropy_mean)

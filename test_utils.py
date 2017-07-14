@@ -194,10 +194,10 @@ def to_rgb(img):
 
 
 def prewhiten(x):
-    mean = np.mean(x)  # scalar
-    std = np.std(x)  # scalar
+    mean = np.mean(x)
+    std = np.std(x)
     std_adj = np.maximum(std, 1.0 / np.sqrt(x.size))
-    y = np.multiply(np.subtract(x, mean), 1 / std_adj)  # substract the image from mean, then divide the std
+    y = np.multiply(np.subtract(x, mean), 1 / std_adj)
     return y
 
 
@@ -220,7 +220,7 @@ def flip(image, random_flip):
     return image
 
 
-def load_data(image_paths, do_random_crop, do_random_flip, image_size, do_prewhiten=True):
+def load_data(image_paths, image_size, do_prewhiten=True):
     # -- prewhiten is necessary !! -- #
     num_samples = len(image_paths)
     images = np.zeros((num_samples, image_size, image_size, 3))
@@ -230,8 +230,6 @@ def load_data(image_paths, do_random_crop, do_random_flip, image_size, do_prewhi
             img = to_rgb(img)
         if do_prewhiten:
             img = prewhiten(img)
-        # img = crop(img, do_random_crop, image_size)
-        # img = flip(img, do_random_flip)
         images[i, :, :, :] = img
     return images
 
