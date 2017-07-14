@@ -18,8 +18,8 @@
 | <strong>save_weights.py</strong> | saving trainable parameters as .npy file | run_saveWeights.sh |
 | <strong>train_utils.py</strong> | helper code for training | -- |
 | <strong>test_utils.py</strong> | helper code for evaluation | -- |
-| <strong>test_lfw.py</strong> | helper code for lfw test with pretrained model | -- |
-| <strong>extract_feature.py</strong> | helper code for feature extraction given a image path list | -- |
+| <strong>test_lfw.py</strong> | helper code for lfw test with pretrained model | run_lfwTest.sh |
+| <strong>extract_feature.py</strong> | helper code for feature extraction given a image path list | run_extract.sh |
 
 <br/><br/>
 ### Why hyper-parameters tunning is important?
