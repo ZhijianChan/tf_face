@@ -6,6 +6,9 @@ import os
 import sys
 import argparse
 import time
+import json
+import matio
+import importlib
 import numpy as np
 import tensorflow as tf
 from scipy import misc
@@ -49,24 +52,35 @@ def load_data(data_root, imglist):
 
 
 def main(args):
-    if not os.path.exists(args.imglist):
-        print('invalid imglist')
+    if not os.path.exists(args.templates_files):
+        print('invalid template files')
         return
-
-    with open(args.imglist) as fp:
-        imglist = [line.strip() for line in fp]
-    total_images = len(imglist)
 
     if not os.path.exists(args.pretrained_model):
         print('invalid pretrained model path')
         return
-    weights = np.load(args.pretrained_model)
 
+    with open(args.templates_files) as fp:
+        imglist = json.load(fp)['path']
+        #tmplist = []
+        #for i in range(len(imglist)):
+        #    if not os.path.exists(os.path.join(args.data_root, imglist[i]) + args.file_ext):
+        #        tmplist.append(imglist[i])
+
+    #imglist = tmplist
+    total_images = len(imglist)
+    weights = np.load(args.pretrained_model)
+    model_module = importlib.import_module(args.model_def)
+
+    print("total images:", total_images)
+    print("file_ext:", args.file_ext)
 
     # ---- build graph ---- #
-    input = tf.placeholder(tf.float32, shape=[None, 160, 160, 3], name='image_batch')
-    prelogits, _ = inception_resnet_v1.inference(input, 1, phase_train=False)
-    embeddings = tf.nn.l2_normalize(prelogits, 1, 1e-10)
+    with tf.device('/gpu:%d' % args.gpu_id):
+        input = tf.placeholder(tf.float32, shape=[None, 160, 160, 3], name='image_batch')
+        prelogits, _ = model_module.inference(input, 1, phase_train=False)
+        embeddings = tf.nn.l2_normalize(prelogits, 1, 1e-10)
+        #embeddings = prelogits
 
     # ---- extract ---- #
     gpu_options = tf.GPUOptions(allow_growth=True)
@@ -78,32 +92,51 @@ def main(args):
         sess.run(to_assign)
         print('restore parameters: %.2fsec' % (time.time()-beg_time))
 
-        beg_time = time.time()
-        images = load_data(args.data_root, imglist)
-        print('load images: %.2fsec' % (time.time()-beg_time))
-
-        beg_time = time.time()
+        images_batch_size = 10000
+        images_batch_num = total_images // images_batch_size
+        if total_images % images_batch_size != 0:
+            images_batch_num = images_batch_num + 1
         batch_size = 32
-        beg = 0
-        end = 0
-        features = np.zeros((total_images, 128))
-        while end < total_images:
-            print 'process:', beg
-            end = min(beg + batch_size, total_images)
-            features[beg:end] = sess.run(embeddings, {input:images[beg:end]})
-            beg = end
-        print('extract features: %.2fsec' % (time.time()-beg_time))
-
+        for i in range(images_batch_num):
+            beg_time = time.time()
+            images_beg = i * images_batch_size
+            images_end = min(images_beg + images_batch_size, total_images)
+            to_process = images_end - images_beg
+            images = load_data(args.data_root, imglist[images_beg: images_end])
+            print('load images: %.2fsec' % (time.time()-beg_time))
+            beg_time = time.time()
+            beg = 0
+            end = 0
+            features = np.zeros((to_process, 128),dtype =np.float32)
+            while end < to_process:
+                end = min(beg + batch_size, to_process)
+                print('extract: [%d][%d][%d]' % (i, end, to_process))
+                features[beg:end] = sess.run(embeddings, {input:images[beg:end]})
+                '''
+                for j in range(end - beg):
+                    feats[j,:] = feats[j,:] / np.linalg.norm(feats[j,:])
+                features[beg:end] = feats
+                '''
+                beg = end
+            print('done: %.2fsec' % (time.time()-beg_time))
+            print('saving ...')
+            beg_time = time.time()
+            for i in range(to_process):
+                savepath = os.path.join(args.data_root, imglist[images_beg + i]) + args.file_ext
+                with open(savepath, 'wb') as fp:
+                    matio.write_mat(fp, features[i,:])
+            print('done: %.2fsec' % (time.time()-beg_time))
     sess.close()
-    np.savetxt(args.savepath, features, delimiter=',')
 
 
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument('data_root', type=str)
-    parser.add_argument('imglist', type=str)
+    parser.add_argument('templates_files', type=str)
     parser.add_argument('pretrained_model', type=str)
-    parser.add_argument('savepath', type=str)
+    parser.add_argument('model_def', type=str)
+    parser.add_argument('file_ext', type=str)
+    parser.add_argument('gpu_id', type=int)
     return parser.parse_args(argv)
 
 

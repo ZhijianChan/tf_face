@@ -21,10 +21,10 @@ def main(args):
         allow_soft_placement=True))
     with sess.as_default():
         # ---- load pretrained parameters ---- #
-        saver = tf.train.import_meta_graph(args.meta_file)
+        saver = tf.train.import_meta_graph(args.meta_file, clear_devices=True)
         saver.restore(tf.get_default_session(), args.ckpt_file)
         pretrained = {}
-        var_ = tf.trainable_variables()
+        var_ = tf.get_collection(tf.GraphKeys.MODEL_VARIABLES)
         print("total:", len(var_))
         for v in var_:
             print("process:", v.name)
@@ -39,11 +39,11 @@ def main(args):
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
     # ---- pretrained model ---- #
-    parser.add_argument("--meta_file", type=str,
+    parser.add_argument("meta_file", type=str,
                         help="path to tensorflow meta-graph file")
-    parser.add_argument("--ckpt_file", type=str,
+    parser.add_argument("ckpt_file", type=str,
                         help="path to tensorflow checkpoint file")
-    parser.add_argument("--save_path", type=str,
+    parser.add_argument("save_path", type=str,
                         help="path to save .npy model file", default="pretrained/pretrained.npy")
     return parser.parse_args(argv)
 

@@ -110,19 +110,22 @@ def get_train_op(total_loss, global_step,
         opt = tf.train.MomentumOptimizer(lr, 0.9, use_nesterov=True)
     else:
         raise ValueError('Invalid optimization algorithm')
+    #update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)  #[test2]
+    #with tf.control_dependencies(update_ops):
     grads = opt.compute_gradients(total_loss, var_list)
     train_op_ = opt.apply_gradients(grads, global_step=global_step)
+
     if log_histograms:
         for var in tf.trainable_variables():
             tf.summary.histogram(var.name, var)
         for grad, var in grads:
             if grad is not None:
                 tf.summary.histogram(var.name + '/grad', grad)
+
     # maintain the moving averages of all trainable variables
     ema = tf.train.ExponentialMovingAverage(moving_average_decay, global_step)
-    # var_avg_op = ema.apply(tf.trainable_variables())
     var_avg_op = ema.apply(var_list)
-    with tf.control_dependencies([train_op_, var_avg_op]):
+    with tf.control_dependencies([train_op_, var_avg_op ]):
         train_op = tf.no_op(name='train')
     return train_op
 
@@ -160,8 +163,14 @@ def center_loss(features, label, alpha, num_classes):
     return loss, centers
 
 
-def get_datasets(data_dir, imglist_path):
-    """Load imglist, which contains 'img_path label' in each line"""
+def get_datasets(data_dir, imglist_path, offset=0):
+    """parsing imglist, which contains 'path label' in each line
+
+    :param data_dir:
+    :param imglist_path:
+    :param offset: label offset, used in multiple dataset training, default 0
+    :return:
+    """
     mdict = {}
     paths_list = []
     label_list = []
@@ -169,7 +178,7 @@ def get_datasets(data_dir, imglist_path):
         for line in fp:
             items = line.strip().split()
             imgpath = os.path.join(data_dir, items[0])
-            label = int(items[1])
+            label = offset + int(items[1])
             mdict[label] = 1
             paths_list.append(imgpath)
             label_list.append(label)

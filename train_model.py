@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import train_utils
 import test_utils
+from models import model_utils
 
 import random
 import os
@@ -254,6 +255,13 @@ def main(args):
                 weights_regularizer=slim.l2_regularizer(args.weight_decay),
                 scope='Logits',
                 reuse=False)
+            '''
+            with tf.variable_scope('Logits'):
+                logits = model_utils.fc(prelogits,
+                                        num_classes,
+                                        args.weight_decay,
+                                        std=0.1)
+            '''
             # normalized features
             # [notice: used in test stage]
             embeddings = tf.nn.l2_normalize(
@@ -342,7 +350,7 @@ def main(args):
 
                 # evaluate on LFW
                 if args.lfw_dir:
-                    evaluate(args, sess, enque_op, log_dir, step, summary_writer,
+                    evaluate(args, sess, enque_op, log_dir, step+batch_num-1, summary_writer,
                             paths_pl, label_pl, phase_train_pl, batch_size_pl,
                             embeddings, label_batch, lfw_paths, lfw_label)
     sess.close()

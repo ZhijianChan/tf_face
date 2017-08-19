@@ -107,7 +107,7 @@ def reduction_b(x):
     return x
 
 
-def inception_resnet_v1(image_batch,
+def inception_resnet_v1(inputs,
                         is_training=True,
                         keep_prob=0.8,
                         bottleneck_size=128,
@@ -115,7 +115,7 @@ def inception_resnet_v1(image_batch,
                         scope='Inception-ResNet-v1'):
     """Creates the Inception ResNet V1 model.
     Args:
-        image_batch: a 4-D tensor of size [batch_size, height, width, 3].
+        inputs: a 4-D tensor of size [batch_size, height, width, 3].
         is_training: training phase flag.
         keep_prob: float, dropout probability.
         reuse: whether or not the network and its variables should be reused.
@@ -125,17 +125,16 @@ def inception_resnet_v1(image_batch,
         end_points: the set of end_points rrom the inception model.
     """
     end_points = {}
-    with tf.variable_scope(scope, 'Inception-ResNet-v1', [image_batch], reuse=reuse):
+    with tf.variable_scope(scope, 'Inception-ResNet-v1', [inputs], reuse=reuse):
         with slim.arg_scope([slim.batch_norm, slim.dropout], is_training=is_training):
-            with slim.arg_scope([slim.conv2d, slim.max_pool2d, slim.avg_pool2d],
-                                stride=1, padding='SAME'):
-                x = slim.conv2d(image_batch, 32, 3, stride=2, padding='VALID', scope='Conv2d_1a_3x3')
+            with slim.arg_scope([slim.conv2d, slim.max_pool2d, slim.avg_pool2d], stride=1, padding='SAME'):
+                x = slim.conv2d(inputs, 32, 3, stride=2, padding='VALID', scope='Conv2d_1a_3x3')
                 end_points['Conv2d_1a_3x3'] = x
                 x = slim.conv2d(x, 32, 3, padding='VALID', scope='Conv2d_2a_3x3')
                 end_points['Conv2d_2a_3x3'] = x
                 x = slim.conv2d(x, 64, 3, scope='Conv2d_2b_3x3')
                 end_points['Conv2d_2b_3x3'] = x
-                x = slim.max_pool2d(x, 3, stride=2,padding='VALID', scope='MaxPool_3a_3x3')
+                x = slim.max_pool2d(x, 3, stride=2, padding='VALID', scope='MaxPool_3a_3x3')
                 end_points['MaxPool_3a_3x3'] = x
                 x = slim.conv2d(x, 80, 1, scope='Conv2d_3b_1x1')
                 end_points['Conv2d_3b_1x1'] = x
@@ -143,22 +142,16 @@ def inception_resnet_v1(image_batch,
                 end_points['Conv2d_4a_3x3'] = x
                 x = slim.conv2d(x, 256, 3, stride=2, padding='VALID', scope='Conv2d_4b_3x3')
                 end_points['Conv2d_4b_3x3'] = x
-
                 x = slim.repeat(x, 5, block35, scale=0.17)  # scale: 0.1~0.3
-
                 with tf.variable_scope('Mixed_6a'):
                     x = reduction_a(x, 192, 192, 256, 384)
                 end_points['Mixed_6a'] = x
-
                 x = slim.repeat(x, 10, block17, scale=0.10)
-
                 with tf.variable_scope('Mixed_7a'):
                     x = reduction_b(x)
                 end_points['Mixed_7a'] = x
-
                 x = slim.repeat(x, 6, block8, scale=0.20)
                 # x = block8(x, activation_fn=None)
-
                 with tf.variable_scope('AvgPool'):
                     end_points['PrePool'] = x
                     # average_pool
@@ -171,11 +164,16 @@ def inception_resnet_v1(image_batch,
                     x = slim.dropout(x, keep_prob, is_training=is_training, scope='Dropout')
                     end_points['PreLogitsFlatten'] = x
                 # Fc1
-                x = slim.fully_connected(x, bottleneck_size, activation_fn=None, scope='Bottleneck', reuse=False)
+                x = slim.fully_connected(
+                    x, bottleneck_size,
+                    activation_fn=None,
+                    # normalizer_fn=None,  # [test3]
+                    scope='Bottleneck',
+                    reuse=False)
     return x, end_points
 
 
-def inference(image_batch, keep_prob,
+def inference(inputs, keep_prob,
               bottleneck_size=128,
               phase_train=True,
               weight_decay=0.0,
@@ -184,10 +182,13 @@ def inference(image_batch, keep_prob,
         'decay': 0.995,
         'epsilon': 0.001,
         'updates_collections': None,
-        'variables_collections': [tf.GraphKeys.TRAINABLE_VARIABLES] }
-    with slim.arg_scope([slim.conv2d, slim.fully_connected],
-                        weights_initializer=tf.truncated_normal_initializer(stddev=0.1),
-                        weights_regularizer=slim.l2_regularizer(weight_decay),
-                        normalizer_fn=slim.batch_norm,
-                        normalizer_params=batch_norm_params):
-        return inception_resnet_v1(image_batch, is_training=phase_train, keep_prob=keep_prob, bottleneck_size=bottleneck_size, reuse=reuse)
+        # 'scale': True,  # [test1]
+        'variables_collections': [tf.GraphKeys.TRAINABLE_VARIABLES]}  # [test2]
+    with slim.arg_scope(
+            [slim.conv2d, slim.fully_connected],
+            weights_initializer=tf.truncated_normal_initializer(stddev=0.1),
+            weights_regularizer=slim.l2_regularizer(weight_decay),
+            normalizer_fn=slim.batch_norm,
+            normalizer_params=batch_norm_params):
+        return inception_resnet_v1(inputs, is_training=phase_train, keep_prob=keep_prob,
+                                   bottleneck_size=bottleneck_size, reuse=reuse)

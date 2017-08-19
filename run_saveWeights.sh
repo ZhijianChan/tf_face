@@ -1,4 +1,4 @@
 python save_weights.py \
-    --meta_file logs/20170711-130155/20170712-152518/models/model-20170712-152518.meta \
-    --ckpt_file logs/20170711-130155/20170712-152518/models/model-20170712-152518.ckpt-258972 \
-    --save_path pretrained/weights_b.npy
+    logs/test/inception_resnet_v2/baseline/20170728-165144/models/model-20170728-165144.meta \
+    logs/test/inception_resnet_v2/baseline/20170728-165144/models/model-20170728-165144.ckpt-221975 \
+    pretrained/weights_face_ir_v2xfcbn.npy
